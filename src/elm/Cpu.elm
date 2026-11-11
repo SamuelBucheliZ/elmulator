@@ -225,49 +225,7 @@ apply machineStateDiff cpuState =
             Invalid maybePreviousState errorMessage
 
         Events machineStateDiffEvents ->
-            --if invalidEvent machineStateDiffEvents then
-            --    Invalid (Just cpuState) "Invalid event"
-            --
-            --else
-            --    validate (List.foldl applyEvent { cpuState | step = newStep } machineStateDiffEvents)
-            -- Enable above to search for an invalid event
             Valid (List.foldl applyEvent { cpuState | step = newStep } machineStateDiffEvents)
-
-
-invalidEvent : List MachineStateDiffEvent -> Bool
-invalidEvent events =
-    List.length (List.filterMap findMemoryEvent events) > 1
-
-
-findPCEvent : MachineStateDiffEvent -> Maybe Int
-findPCEvent event =
-    case event of
-        SetCpu (SetPC value) ->
-            if value > 0x1FFF then
-                Just value
-
-            else
-                Nothing
-
-        _ ->
-            Nothing
-
-
-findMemoryEvent : MachineStateDiffEvent -> Maybe Int
-findMemoryEvent event =
-    case event of
-        SetMemory address value ->
-            if address == 0x23E5 && value == 0x20 then
-                Just value
-
-            else if address == 0x23E4 && value == 0x68 then
-                Just value
-
-            else
-                Nothing
-
-        _ ->
-            Nothing
 
 
 applyEvent : MachineStateDiffEvent -> MachineState -> MachineState
