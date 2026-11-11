@@ -19,6 +19,7 @@ import LogicFlags
 import OpCode
 import OpCodeTable
 import Test exposing (..)
+import UI.Msg exposing (GameKey(..))
 
 
 noFlags : ConditionCodes
@@ -345,6 +346,42 @@ all =
                                     Err message
                     in
                     Expect.equal (Ok { pc = 0x2710, nextDue = 66666 }) result
+            ]
+        , describe "cabinet inputs"
+            [ test "the machine powers on with no button pressed" <|
+                \() ->
+                    case Cpu.init [ 0x00 ] of
+                        Valid ms ->
+                            Expect.equal ( 0x08, 0x08 ) ( ms.ports.one, ms.ports.two )
+
+                        Invalid _ message ->
+                            Expect.fail message
+            , test "fire sets its bit of port 1 and releasing it clears only that bit" <|
+                \() ->
+                    let
+                        base =
+                            machineWith baseCpu []
+
+                        machineState =
+                            { base | ports = Ports 0x08 0x08 }
+
+                        pressed =
+                            case Cpu.keyPressed Fire machineState of
+                                Valid ms ->
+                                    ms
+
+                                Invalid _ _ ->
+                                    machineState
+
+                        released =
+                            case Cpu.keyReleased Fire pressed of
+                                Valid ms ->
+                                    ms
+
+                                Invalid _ _ ->
+                                    pressed
+                    in
+                    Expect.equal ( 0x18, 0x08 ) ( pressed.ports.one, released.ports.one )
             ]
         , describe "instruction coverage"
             [ test "every documented 8080 opcode is implemented" <|

@@ -36,5 +36,17 @@ all =
             \() ->
                 Decode.decodeString keyDecoderUp "{\"key\":\"s\",\"target\":{\"tagName\":\"BODY\"}}"
                     |> Result.map Debug.toString
-                    |> Expect.equal (Ok "KeyUp Space")
+                    |> Expect.equal (Ok "KeyUp Fire")
+        , test "the cabinet buttons are on the keyboard" <|
+            \() ->
+                [ "ArrowLeft", "a", "ArrowRight", "d", " ", "s", "Enter", "1", "2", "c" ]
+                    |> List.map (\key -> pressed key "BODY")
+                    |> List.map (Result.withDefault "none")
+                    |> Expect.equal
+                        [ "KeyDown Left", "KeyDown Left", "KeyDown Right", "KeyDown Right", "KeyDown Fire", "KeyDown Fire", "KeyDown Start1", "KeyDown Start1", "KeyDown Start2", "KeyDown Coin" ]
+        , test "releasing a cabinet button is decoded too" <|
+            \() ->
+                Decode.decodeString keyDecoderUp "{\"key\":\"2\",\"target\":{\"tagName\":\"BODY\"}}"
+                    |> Result.map Debug.toString
+                    |> Expect.equal (Ok "KeyUp Start2")
         ]

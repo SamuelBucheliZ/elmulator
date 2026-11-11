@@ -1,12 +1,15 @@
 module UI.KeyDecoder exposing (keyDecoderDown, keyDecoderUp)
 
-{-| Keyboard shortcuts. The keys are shown in the button labels.
+{-| Keyboard shortcuts of the emulator and the buttons of the arcade cabinet.
 
     l  load a ROM          p  pause / play
     r  reset               n  one step (pauses)
     e  run the steps given in the input box (pauses)
     i  interrupt
-    a d s  the game keys: left, right, fire
+
+    cabinet buttons:  left  arrow left / a      right  arrow right / d
+                      fire  space / s           coin   c
+                      1P start  Enter / 1       2P start  2
 
 Keys pressed while typing in a text field (the step count) are ignored.
 
@@ -40,17 +43,13 @@ keyDecoderDown =
                     "i" ->
                         Decode.succeed InterruptRequested
 
-                    "a" ->
-                        Decode.succeed (KeyDown Left)
-
-                    "d" ->
-                        Decode.succeed (KeyDown Right)
-
-                    "s" ->
-                        Decode.succeed (KeyDown Space)
-
                     _ ->
-                        Decode.fail "Pressed key is not an Elmulator shortcut"
+                        case gameKey key of
+                            Just gameKeyPressed ->
+                                Decode.succeed (KeyDown gameKeyPressed)
+
+                            Nothing ->
+                                Decode.fail "Pressed key is not an Elmulator shortcut"
             )
 
 
@@ -59,19 +58,52 @@ keyDecoderUp =
     keyDecoder
         |> Decode.andThen
             (\key ->
-                case key of
-                    "a" ->
-                        Decode.succeed (KeyUp Left)
+                case gameKey key of
+                    Just gameKeyReleased ->
+                        Decode.succeed (KeyUp gameKeyReleased)
 
-                    "d" ->
-                        Decode.succeed (KeyUp Right)
-
-                    "s" ->
-                        Decode.succeed (KeyUp Space)
-
-                    _ ->
+                    Nothing ->
                         Decode.fail "Pressed key is not an Elmulator shortcut"
             )
+
+
+{-| The game button of a key on the keyboard.
+-}
+gameKey : String -> Maybe GameKey
+gameKey key =
+    case key of
+        "ArrowLeft" ->
+            Just Left
+
+        "a" ->
+            Just Left
+
+        "ArrowRight" ->
+            Just Right
+
+        "d" ->
+            Just Right
+
+        " " ->
+            Just Fire
+
+        "s" ->
+            Just Fire
+
+        "Enter" ->
+            Just Start1
+
+        "1" ->
+            Just Start1
+
+        "2" ->
+            Just Start2
+
+        "c" ->
+            Just Coin
+
+        _ ->
+            Nothing
 
 
 {-| The pressed key, unless it was typed into a text field.

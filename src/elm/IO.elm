@@ -2,6 +2,7 @@ module IO exposing (..)
 
 import Bitwise
 import EmulatorState exposing (ByteValue, EmulatorState, MachineState, MachineStateDiff(..), MachineStateDiffEvent(..), RegisterValue, SetCpuStateEvent(..), SetPortEvent(..), SetShiftRegisterEvent(..))
+import UI.Msg exposing (GameKey(..))
 
 
 io_in : ByteValue -> MachineState -> MachineStateDiff
@@ -67,55 +68,68 @@ io_out address machineState =
             Events [ SetCpu (SetPC newPc) ]
 
 
-pressLeft : MachineState -> MachineStateDiff
-pressLeft machineState =
-    let
-        newValue =
-            Bitwise.or machineState.ports.one 16
-    in
-    Events [ SetPort (SetOne newValue) ]
+{-| Input bits of port 1 of the Space Invaders cabinet. A bit is 1 while its button is pressed.
+Bit 3 is always 1.
+-}
+coinBit : ByteValue
+coinBit =
+    0x01
 
 
-relaseLeft : MachineState -> MachineStateDiff
-relaseLeft machineState =
-    let
-        newValue =
-            Bitwise.and machineState.ports.one (255 - 16)
-    in
-    Events [ SetPort (SetOne newValue) ]
+start2Bit : ByteValue
+start2Bit =
+    0x02
 
 
-pressRight : MachineState -> MachineStateDiff
-pressRight machineState =
-    let
-        newValue =
-            Bitwise.or machineState.ports.one 32
-    in
-    Events [ SetPort (SetOne newValue) ]
+start1Bit : ByteValue
+start1Bit =
+    0x04
 
 
-relaseRight : MachineState -> MachineStateDiff
-relaseRight machineState =
-    let
-        newValue =
-            Bitwise.and machineState.ports.one (255 - 32)
-    in
-    Events [ SetPort (SetOne newValue) ]
+fireBit : ByteValue
+fireBit =
+    0x10
 
 
-pressSpace : MachineState -> MachineStateDiff
-pressSpace machineState =
-    let
-        newValue =
-            Bitwise.or machineState.ports.one 8
-    in
-    Events [ SetPort (SetOne newValue) ]
+leftBit : ByteValue
+leftBit =
+    0x20
 
 
-relaseSpace : MachineState -> MachineStateDiff
-relaseSpace machineState =
-    let
-        newValue =
-            Bitwise.and machineState.ports.one (255 - 8)
-    in
-    Events [ SetPort (SetOne newValue) ]
+rightBit : ByteValue
+rightBit =
+    0x40
+
+
+{-| The port 1 bit of a game key.
+-}
+inputBit : GameKey -> ByteValue
+inputBit key =
+    case key of
+        Left ->
+            leftBit
+
+        Right ->
+            rightBit
+
+        Fire ->
+            fireBit
+
+        Coin ->
+            coinBit
+
+        Start1 ->
+            start1Bit
+
+        Start2 ->
+            start2Bit
+
+
+pressInput : ByteValue -> MachineState -> MachineStateDiff
+pressInput bit machineState =
+    Events [ SetPort (SetOne (Bitwise.or machineState.ports.one bit)) ]
+
+
+releaseInput : ByteValue -> MachineState -> MachineStateDiff
+releaseInput bit machineState =
+    Events [ SetPort (SetOne (Bitwise.and machineState.ports.one (Bitwise.complement bit))) ]

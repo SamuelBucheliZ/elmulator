@@ -4,7 +4,7 @@ import Array exposing (Array)
 import Bitwise
 import Config exposing (interruptPeriodCycles)
 import EmulatorState exposing (AddressValue, ByteValue, ConditionCodes, CpuState, EmulatorState(..), Flag, MachineState, MachineStateDiff(..), MachineStateDiffEvent(..), Memory, Ports, RegisterValue, SetCpuStateEvent(..), SetFlagEvent(..), SetPortEvent(..), SetShiftRegisterEvent(..), ShiftRegister)
-import IO exposing (pressLeft, pressRight, pressSpace, relaseLeft, relaseRight, relaseSpace)
+import IO exposing (inputBit, pressInput, releaseInput)
 import MachineInstructions exposing (push_)
 import Memory exposing (createMemoryProvider)
 import OpCode exposing (OpCode, getCycles, getImplementation)
@@ -468,30 +468,15 @@ initShiftRegister =
 
 initPorts : Ports
 initPorts =
-    Ports 14 8
+    -- bit 3 is always 1; no button is pressed at power on
+    Ports 8 8
 
 
 keyPressed : GameKey -> MachineState -> EmulatorState
 keyPressed key machineState =
-    case key of
-        Left ->
-            apply (pressLeft machineState) machineState
-
-        Right ->
-            apply (pressRight machineState) machineState
-
-        Space ->
-            apply (pressSpace machineState) machineState
+    apply (pressInput (inputBit key) machineState) machineState
 
 
 keyReleased : GameKey -> MachineState -> EmulatorState
 keyReleased key machineState =
-    case key of
-        Left ->
-            apply (relaseLeft machineState) machineState
-
-        Right ->
-            apply (relaseRight machineState) machineState
-
-        Space ->
-            apply (relaseSpace machineState) machineState
+    apply (releaseInput (inputBit key) machineState) machineState

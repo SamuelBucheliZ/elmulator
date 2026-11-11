@@ -26,4 +26,7 @@ type Msg
 type GameKey
     = Left
     | Right
-    | Space
+    | Fire
+    | Coin
+    | Start1
+    | Start2
