@@ -20,6 +20,7 @@ type Msg
     | StepsSubmitted
     | SpeedSelected Float
     | TogglePause
+    | ToggleCode
     | StartPausedChanged Bool
 
 

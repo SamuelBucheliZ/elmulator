@@ -5,6 +5,7 @@ import Bootstrap.Button as Button
 import Bootstrap.CDN as CDN
 import Bootstrap.Form.Input as Input
 import Bootstrap.Grid as Grid
+import Bootstrap.Grid.Col as Col
 import Browser
 import Browser.Events
 import Bytes exposing (Bytes)
@@ -18,11 +19,9 @@ import File exposing (File)
 import File.Select as Select
 import FileDecoder exposing (decodeFile)
 import Graphics exposing (canvasHeight, canvasWidth, renderScreen)
-import Html exposing (Html, div, h1, h3, input, kbd, label, p, pre, span, table, tbody, td, text, tr)
+import Html exposing (Html, div, h1, h3, input, kbd, label, p, pre, span, text)
 import Html.Attributes exposing (checked, class, height, style, type_, width)
 import Html.Events exposing (onCheck, onClick)
-import Instruction exposing (Instruction, instructionToString)
-import InstructionDisassembler exposing (disassembleToInstructions)
 import Maybe exposing (withDefault)
 import Memory exposing (readMemorySlice)
 import Task
@@ -30,6 +29,7 @@ import Time
 import UI.Formatter exposing (cpustate)
 import UI.KeyDecoder exposing (keyDecoderDown, keyDecoderUp)
 import UI.Msg exposing (Msg(..))
+import UI.Panels exposing (codePanel, cpuPanel, portsPanel, stackPanel)
 
 
 
@@ -52,11 +52,11 @@ main =
 
 type alias Model =
     { data : Maybe Bytes
-    , disassembledProgram : Maybe String
     , currentCpuState : EmulatorState
     , nsteps : Int
     , speedFactor : Float
     , paused : Bool
+    , showCode : Bool
     , startPaused : Bool
 
     -- emulation timing: the time of the last slice, cycles owed but not yet run, the cycle count
@@ -77,11 +77,11 @@ type alias Model =
 initialModel : Model
 initialModel =
     { data = Nothing
-    , disassembledProgram = Nothing
     , currentCpuState = Invalid Nothing "No ROM loaded yet"
     , nsteps = 0
     , speedFactor = defaultSpeedFactor
     , paused = False
+    , showCode = False
     , startPaused = False
     , lastSliceMillis = 0
     , cycleRemainder = 0
@@ -286,6 +286,9 @@ update msg model =
                 Nothing ->
                     ( model, Cmd.none )
 
+        ToggleCode ->
+            ( { model | showCode = not model.showCode }, Cmd.none )
+
         TogglePause ->
             ( { model | paused = not model.paused, windowStartMillis = 0, cyclesInWindow = 0 }, Cmd.none )
 
@@ -313,13 +316,9 @@ loadDataIntoMemory model data =
 
         initialCpuState =
             Cpu.init decodedFile
-
-        disassembledProgram =
-            disassemble data
     in
     { model
         | data = Just data
-        , disassembledProgram = Just disassembledProgram
         , currentCpuState = initialCpuState
         , paused = model.startPaused
         , lastSliceMillis = 0
@@ -331,18 +330,6 @@ loadDataIntoMemory model data =
         , screen = greenScreenHtml
         , lastFrame = Nothing
     }
-
-
-disassemble : Bytes -> String
-disassemble data =
-    let
-        decodedFile =
-            decodeFile data
-
-        disassembledFile =
-            disassembleToInstructions decodedFile
-    in
-    String.join "\n" (List.map instructionToString disassembledFile)
 
 
 
@@ -377,32 +364,72 @@ view model =
                 , pageHeader
                 , toolbar model
                 , Grid.row []
-                    [ Grid.col []
+                    [ Grid.col [ Col.lg7 ]
                         [ h3 [] [ text "Screen" ]
                         , model.screen
                         , keyLegend
                         ]
-                    , Grid.col []
-                        [ h3 [] [ text "Machine State" ]
-                        , pre [] [ text (cpustate model.currentCpuState) ]
-                        , pre []
-                            [ text
-                                (if model.paused then
-                                    "state: paused"
+                    , Grid.col [ Col.lg5 ]
+                        ([ h3 [] [ text "CPU" ]
+                         , withMachine model.currentCpuState
+                            (cpuPanel
+                                { paused = model.paused
+                                , speed = String.fromFloat model.speedFactor ++ "x"
+                                , measured = megahertz (toFloat model.measuredCyclesPerSecond) ++ " MHz"
+                                }
+                            )
+                         , h3 [ class "mt-3" ] [ text "Ports" ]
+                         , withMachine model.currentCpuState portsPanel
+                         , h3 [ class "mt-3" ] [ text "Stack" ]
+                         , withMachine model.currentCpuState stackPanel
+                         , div [ class "mt-3" ]
+                            [ Button.button
+                                [ Button.outlineSecondary, Button.small, Button.attrs [ onClick ToggleCode ] ]
+                                [ text
+                                    (if model.showCode then
+                                        "hide code"
 
-                                 else
-                                    "state: running"
-                                )
+                                     else
+                                        "show code"
+                                    )
+                                ]
                             ]
-                        , pre [] [ text ("speed: " ++ String.fromFloat model.speedFactor ++ "x (target " ++ megahertz (baseCyclesPerSecond * model.speedFactor) ++ " MHz)") ]
-                        , pre [] [ text ("measured: " ++ megahertz (toFloat model.measuredCyclesPerSecond) ++ " MHz") ]
-                        ]
-                    , Grid.col []
-                        [ h3 [] [ text "Code" ]
-                        , div [ class "code-wrapper" ] [ pre [] [ text (withDefault "" model.disassembledProgram) ] ]
-                        ]
+                         ]
+                            ++ (if model.showCode then
+                                    [ h3 [ class "mt-3" ] [ text "Code" ]
+                                    , withMachine model.currentCpuState codePanel
+                                    ]
+
+                                else
+                                    []
+                               )
+                        )
                     ]
                 ]
+
+
+{-| The machine of the emulator, if it has one (an error keeps the last known state).
+-}
+machineOf : EmulatorState -> Maybe MachineState
+machineOf state =
+    case state of
+        Valid machineState ->
+            Just machineState
+
+        Invalid maybeMachineState _ ->
+            maybeMachineState
+
+
+{-| Shows a panel of the machine, or a note when there is no machine state.
+-}
+withMachine : EmulatorState -> (MachineState -> Html Msg) -> Html Msg
+withMachine state viewPanel =
+    case machineOf state of
+        Just machineState ->
+            viewPanel machineState
+
+        Nothing ->
+            text "no CPU state"
 
 
 {-| Formats a cycles per second value as MHz with two decimals.
@@ -486,23 +513,21 @@ startPausedCheckbox startPaused =
 -}
 keyLegend : Html Msg
 keyLegend =
-    table [ class "table table-sm table-borderless small mt-2" ]
-        [ tbody []
-            [ keyRow "A" "move left"
-            , keyRow "D" "move right"
-            , keyRow "S" "fire"
-            , keyRow "C" "insert coin"
-            , keyRow "1" "1P start"
-            , keyRow "2" "2P start"
-            ]
+    div [ class "small text-muted mt-2" ]
+        [ keyChip "A" "left"
+        , keyChip "D" "right"
+        , keyChip "S" "fire"
+        , keyChip "C" "coin"
+        , keyChip "1" "1P start"
+        , keyChip "2" "2P start"
         ]
 
 
-keyRow : String -> String -> Html Msg
-keyRow keys action =
-    tr []
-        [ td [ class "pr-3" ] [ kbd [] [ text keys ] ]
-        , td [] [ text action ]
+keyChip : String -> String -> Html Msg
+keyChip key action =
+    span [ class "mr-3 text-nowrap" ]
+        [ kbd [ class "mr-1" ] [ text key ]
+        , text action
         ]
 
 
@@ -538,7 +563,7 @@ pageHeader =
 renderFrame : Array ByteValue -> Html Msg
 renderFrame videoRam =
     Canvas.toHtml ( canvasWidth, canvasHeight )
-        []
+        [ class "screen" ]
         (renderScreen videoRam)
 
 
