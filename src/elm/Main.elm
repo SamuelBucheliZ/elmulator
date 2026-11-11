@@ -18,7 +18,7 @@ import File exposing (File)
 import File.Select as Select
 import FileDecoder exposing (decodeFile)
 import Graphics exposing (canvasHeight, canvasWidth, renderScreen)
-import Html exposing (Html, div, h1, h3, input, label, p, pre, span, text)
+import Html exposing (Html, div, h1, h3, input, kbd, label, p, pre, span, table, tbody, td, text, tr)
 import Html.Attributes exposing (checked, class, height, style, type_, width)
 import Html.Events exposing (onCheck, onClick)
 import Instruction exposing (Instruction, instructionToString)
@@ -380,6 +380,7 @@ view model =
                     [ Grid.col []
                         [ h3 [] [ text "Screen" ]
                         , model.screen
+                        , keyLegend
                         ]
                     , Grid.col []
                         [ h3 [] [ text "Machine State" ]
@@ -478,6 +479,30 @@ startPausedCheckbox startPaused =
     label []
         [ input [ type_ "checkbox", checked startPaused, onCheck StartPausedChanged ] []
         , text " start paused"
+        ]
+
+
+{-| The game buttons and their keys, shown next to the screen.
+-}
+keyLegend : Html Msg
+keyLegend =
+    table [ class "table table-sm table-borderless small mt-2" ]
+        [ tbody []
+            [ keyRow "A" "move left"
+            , keyRow "D" "move right"
+            , keyRow "S" "fire"
+            , keyRow "C" "insert coin"
+            , keyRow "1" "1P start"
+            , keyRow "2" "2P start"
+            ]
+        ]
+
+
+keyRow : String -> String -> Html Msg
+keyRow keys action =
+    tr []
+        [ td [ class "pr-3" ] [ kbd [] [ text keys ] ]
+        , td [] [ text action ]
         ]
 
 

@@ -7,9 +7,8 @@ module UI.KeyDecoder exposing (keyDecoderDown, keyDecoderUp)
     e  run the steps given in the input box (pauses)
     i  interrupt
 
-    cabinet buttons:  left  arrow left / a      right  arrow right / d
-                      fire  space / s           coin   c
-                      1P start  Enter / 1       2P start  2
+    cabinet buttons:  a left    d right    s fire    c coin
+                      1 1P start    2 2P start
 
 Keys pressed while typing in a text field (the step count) are ignored.
 
@@ -72,26 +71,14 @@ keyDecoderUp =
 gameKey : String -> Maybe GameKey
 gameKey key =
     case key of
-        "ArrowLeft" ->
-            Just Left
-
         "a" ->
             Just Left
-
-        "ArrowRight" ->
-            Just Right
 
         "d" ->
             Just Right
 
-        " " ->
-            Just Fire
-
         "s" ->
             Just Fire
-
-        "Enter" ->
-            Just Start1
 
         "1" ->
             Just Start1

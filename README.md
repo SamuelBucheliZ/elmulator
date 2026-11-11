@@ -53,20 +53,18 @@ Elm itself is installed through npm (`elm@0.19.1-6`), so no separate Elm install
 | (i)nterrupt | `i` | Force an RST 2 interrupt now, even if the CPU has interrupts disabled |
 | 0.25x ... 4x | | Speed relative to the 2 MHz clock of a real 8080 |
 
-Cabinet buttons (Space Invaders, the keys are held while the button is pressed):
+Game buttons (Space Invaders; hold a key while the button is pressed):
 
-| Button | Keys |
+| Button | Key |
 | --- | --- |
-| left | arrow left, `a` |
-| right | arrow right, `d` |
-| fire | space, `s` |
+| left | `a` |
+| right | `d` |
+| fire | `s` |
 | coin | `c` (insert a coin before starting) |
-| 1P start | Enter, `1` |
+| 1P start | `1` |
 | 2P start | `2` |
 
-Keys typed into the step box are not treated as shortcuts. The browser may also scroll the page with the arrow keys and space.
-
-Stepping runs instructions only: the 60 Hz timer interrupt is generated while the emulator runs, not while you step. This is deliberate, so that single steps show exactly the instructions you asked for. Use "(i)nterrupt" to raise the interrupt by hand.
+Keys typed into the step box are not treated as shortcuts.
 
 ## Test ROMs
 
