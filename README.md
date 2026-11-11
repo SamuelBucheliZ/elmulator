@@ -4,7 +4,8 @@ _by [Samuel Bucheli](https://github.com/SamuelBucheliZ), [Stefan Friedli](https:
 
 An Intel 8080 emulator written in Elm 0.19.1.
 
-* <https://lakermann.github.io/elmulator>
+* Running version (published from this repository's `main` branch by the CI deploy job): <https://samuelbucheliz.github.io/elmulator>
+* Forked from [lakermann/elmulator](https://github.com/lakermann/elmulator), whose version is published at <https://lakermann.github.io/elmulator>
 
 ## Requirements
 
