@@ -14,12 +14,13 @@ type Msg
     | KeyDown GameKey
     | KeyUp GameKey
     | Reset
-    | TickInterrupt Time.Posix
     | RenderScreen Time.Posix
     | InterruptRequested
     | StepsUpdated String
     | StepsSubmitted
     | SpeedSelected Float
+    | TogglePause
+    | StartPausedChanged Bool
 
 
 type GameKey

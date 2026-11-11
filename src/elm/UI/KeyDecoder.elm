@@ -1,4 +1,16 @@
-module UI.KeyDecoder exposing (..)
+module UI.KeyDecoder exposing (keyDecoderDown, keyDecoderUp)
+
+{-| Keyboard shortcuts. The keys are shown in the button labels.
+
+    l  load a ROM          p  pause / play
+    r  reset               n  one step (pauses)
+    e  run the steps given in the input box (pauses)
+    i  interrupt
+    a d s  the game keys: left, right, fire
+
+Keys pressed while typing in a text field (the step count) are ignored.
+
+-}
 
 import Json.Decode as Decode
 import UI.Msg exposing (GameKey(..), Msg(..))
@@ -6,12 +18,15 @@ import UI.Msg exposing (GameKey(..), Msg(..))
 
 keyDecoderDown : Decode.Decoder Msg
 keyDecoderDown =
-    Decode.field "key" Decode.string
+    keyDecoder
         |> Decode.andThen
-            (\string ->
-                case string of
+            (\key ->
+                case key of
                     "l" ->
                         Decode.succeed RomRequested
+
+                    "p" ->
+                        Decode.succeed TogglePause
 
                     "r" ->
                         Decode.succeed Reset
@@ -19,8 +34,8 @@ keyDecoderDown =
                     "n" ->
                         Decode.succeed (NextStepsRequested 1)
 
-                    "x" ->
-                        Decode.succeed (NextStepsRequested 1500)
+                    "e" ->
+                        Decode.succeed StepsSubmitted
 
                     "i" ->
                         Decode.succeed InterruptRequested
@@ -31,23 +46,20 @@ keyDecoderDown =
                     "d" ->
                         Decode.succeed (KeyDown Right)
 
-                    "e" ->
-                        Decode.succeed StepsSubmitted
-
                     "s" ->
                         Decode.succeed (KeyDown Space)
 
                     _ ->
-                        Decode.fail "Pressed key is not a Elmulator Button"
+                        Decode.fail "Pressed key is not an Elmulator shortcut"
             )
 
 
 keyDecoderUp : Decode.Decoder Msg
 keyDecoderUp =
-    Decode.field "key" Decode.string
+    keyDecoder
         |> Decode.andThen
-            (\string ->
-                case string of
+            (\key ->
+                case key of
                     "a" ->
                         Decode.succeed (KeyUp Left)
 
@@ -58,5 +70,22 @@ keyDecoderUp =
                         Decode.succeed (KeyUp Space)
 
                     _ ->
-                        Decode.fail "Pressed key is not a Elmulator Button"
+                        Decode.fail "Pressed key is not an Elmulator shortcut"
+            )
+
+
+{-| The pressed key, unless it was typed into a text field.
+-}
+keyDecoder : Decode.Decoder String
+keyDecoder =
+    Decode.map2 Tuple.pair
+        (Decode.field "key" Decode.string)
+        (Decode.at [ "target", "tagName" ] Decode.string)
+        |> Decode.andThen
+            (\( key, tagName ) ->
+                if tagName == "INPUT" || tagName == "TEXTAREA" then
+                    Decode.fail "typing in a text field"
+
+                else
+                    Decode.succeed key
             )

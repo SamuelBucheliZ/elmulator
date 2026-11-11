@@ -40,6 +40,23 @@ Elm itself is installed through npm (`elm@0.19.1-6`), so no separate Elm install
 | `npm run build:prod` | Compile an optimised build to `src/js/elmulator.js` |
 | `npm run run:watch` | Dev server with live reload (`elm-live`) |
 
+## Controls
+
+| Button | Key | What it does |
+| --- | --- | --- |
+| (l)oad rom | `l` | Pick a ROM file and start it |
+| (p)ause / (p)lay | `p` | Stop or continue the emulation |
+| (r)eset | `r` | Start the loaded program again (speed and the start setting are kept) |
+| start paused | | When ticked, a loaded ROM starts paused |
+| (n)ext step | `n` | Run one instruction and pause |
+| (e)xecute steps | `e` | Run the number of instructions in the box and pause |
+| (i)nterrupt | `i` | Force an RST 2 interrupt now, even if the CPU has interrupts disabled |
+| 0.25x ... 4x | | Speed relative to the 2 MHz clock of a real 8080 |
+
+Game keys: `a` left, `d` right, `s` fire. Keys typed into the step box are not treated as shortcuts.
+
+Stepping runs instructions only: the 60 Hz timer interrupt is generated while the emulator runs, not while you step. This is deliberate, so that single steps show exactly the instructions you asked for. Use "(i)nterrupt" to raise the interrupt by hand.
+
 ## Test ROMs
 
 The emulator runs the Intel 8080 CPU test programs from `tests/roms/` (provenance in its README)
