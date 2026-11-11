@@ -324,7 +324,7 @@ all =
                             { baseCpu | intEnable = True }
 
                         result =
-                            case Cpu.runCycles 40000 33333 (machineWith cpu []) of
+                            case Cpu.runCycles 40000 33334 (machineWith cpu []) of
                                 ( Valid ms, nextDue ) ->
                                     Ok { pc = ms.cpuState.pc, intEnable = ms.cpuState.intEnable, nextDue = nextDue }
 
@@ -333,19 +333,35 @@ all =
                     in
                     -- the interrupt at cycle 33336 jumps to 0x0010 and disables interrupts; the NOPs after it
                     -- run from there, 4 cycles each, until 40000 cycles
-                    Expect.equal (Ok { pc = 0x10 + 1666, intEnable = False, nextDue = 66666 }) result
-            , test "a due interrupt is skipped while interrupts are disabled, and the schedule continues" <|
+                    Expect.equal (Ok { pc = 0x10 + 1666, intEnable = False, nextDue = 50001 }) result
+            , test "the first interrupt of a frame is RST 1 (mid-frame), the next one RST 2" <|
                 \() ->
                     let
+                        cpu =
+                            { baseCpu | intEnable = True }
+
                         result =
-                            case Cpu.runCycles 40000 33333 (machineWith baseCpu []) of
+                            case Cpu.runCycles 17000 16667 (machineWith cpu []) of
                                 ( Valid ms, nextDue ) ->
                                     Ok { pc = ms.cpuState.pc, nextDue = nextDue }
 
                                 ( Invalid _ message, _ ) ->
                                     Err message
                     in
-                    Expect.equal (Ok { pc = 0x2710, nextDue = 66666 }) result
+                    -- RST 1 at cycle 16668 jumps to 0x0008; the 332 cycles after it are 83 NOPs
+                    Expect.equal (Ok { pc = 0x08 + 83, nextDue = 33334 }) result
+            , test "a due interrupt is skipped while interrupts are disabled, and the schedule continues" <|
+                \() ->
+                    let
+                        result =
+                            case Cpu.runCycles 40000 33334 (machineWith baseCpu []) of
+                                ( Valid ms, nextDue ) ->
+                                    Ok { pc = ms.cpuState.pc, nextDue = nextDue }
+
+                                ( Invalid _ message, _ ) ->
+                                    Err message
+                    in
+                    Expect.equal (Ok { pc = 0x2710, nextDue = 50001 }) result
             ]
         , describe "cabinet inputs"
             [ test "the machine powers on with no button pressed" <|
@@ -381,7 +397,7 @@ all =
                                 Invalid _ _ ->
                                     pressed
                     in
-                    Expect.equal ( 0x18, 0x08 ) ( pressed.ports.one, released.ports.one )
+                    Expect.equal ( ( 0x18, 0x08 ), ( 0x08, 0x08 ) ) ( ( pressed.ports.one, pressed.ports.two ), ( released.ports.one, released.ports.two ) )
             ]
         , describe "instruction coverage"
             [ test "every documented 8080 opcode is implemented" <|

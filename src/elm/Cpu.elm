@@ -4,7 +4,7 @@ import Array exposing (Array)
 import Bitwise
 import Config exposing (interruptPeriodCycles)
 import EmulatorState exposing (AddressValue, ByteValue, ConditionCodes, CpuState, EmulatorState(..), Flag, MachineState, MachineStateDiff(..), MachineStateDiffEvent(..), Memory, Ports, RegisterValue, SetCpuStateEvent(..), SetFlagEvent(..), SetPortEvent(..), SetShiftRegisterEvent(..), ShiftRegister)
-import IO exposing (inputBit, pressInput, releaseInput)
+import IO exposing (keyEvent)
 import MachineInstructions exposing (push_)
 import Memory exposing (createMemoryProvider)
 import OpCode exposing (OpCode, getCycles, getImplementation)
@@ -47,9 +47,10 @@ nStep n machineState =
 
 {-| Runs instructions until the cycle counter reaches `targetCycles`.
 
-Every `interruptPeriodCycles` the RST 2 interrupt is raised. `nextInterruptDue` is the cycle
-count of the next one; it moves on by one period each time, whether or not the CPU accepts
-the interrupt (the video timing keeps its rhythm). Returns the new state and the next due cycle.
+Every `interruptPeriodCycles` a video interrupt is raised: RST 1 and RST 2 alternately, as the
+Space Invaders hardware does. `nextInterruptDue` is the cycle count of the next one; it moves on
+by one period each time, whether or not the CPU accepts the interrupt. Returns the new state
+and the next due cycle.
 
 -}
 runCycles : Int -> Int -> MachineState -> ( EmulatorState, Int )
@@ -64,7 +65,16 @@ runCycles targetCycles nextInterruptDue machineState =
 
             Valid next ->
                 if next.cpuState.cycleCount >= nextInterruptDue then
-                    case checkForInterrupt next of
+                    let
+                        -- the first interrupt of a frame (the mid-frame one) is RST 1
+                        vector =
+                            if modBy 2 (nextInterruptDue // interruptPeriodCycles) == 1 then
+                                1
+
+                            else
+                                2
+                    in
+                    case checkForInterrupt vector next of
                         Valid interrupted ->
                             runCycles targetCycles (nextInterruptDue + interruptPeriodCycles) interrupted
 
@@ -75,14 +85,14 @@ runCycles targetCycles nextInterruptDue machineState =
                     runCycles targetCycles nextInterruptDue next
 
 
-checkForInterrupt : MachineState -> EmulatorState
-checkForInterrupt machineState =
+checkForInterrupt : Int -> MachineState -> EmulatorState
+checkForInterrupt vector machineState =
     let
         intEnabled =
             machineState.cpuState.intEnable
     in
     if intEnabled then
-        generateInterrupt machineState 2
+        generateInterrupt machineState vector
 
     else
         Valid machineState
@@ -474,9 +484,9 @@ initPorts =
 
 keyPressed : GameKey -> MachineState -> EmulatorState
 keyPressed key machineState =
-    apply (pressInput (inputBit key) machineState) machineState
+    apply (keyEvent True key machineState) machineState
 
 
 keyReleased : GameKey -> MachineState -> EmulatorState
 keyReleased key machineState =
-    apply (releaseInput (inputBit key) machineState) machineState
+    apply (keyEvent False key machineState) machineState

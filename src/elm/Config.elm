@@ -21,12 +21,13 @@ baseCyclesPerSecond =
     2000000
 
 
-{-| Cycles between two RST 2 interrupts: 60 interrupts per second at 2 MHz, as in the
-video timing of Space Invaders.
+{-| Cycles between two video interrupts. Space Invaders gets one RST 1 at mid-frame and one RST 2
+at the end of each frame, so an interrupt every 1/120 s at 2 MHz (60 frames per second). The
+game re-enables interrupts in its RST 1 handler, so both vectors are needed.
 -}
 interruptPeriodCycles : Int
 interruptPeriodCycles =
-    33333
+    16667
 
 
 {-| Milliseconds between two emulation slices (about 60 per second).

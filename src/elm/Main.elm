@@ -12,7 +12,7 @@ import Canvas exposing (Renderable, rect, shapes)
 import Canvas.Settings exposing (fill)
 import Color exposing (Color)
 import Config exposing (baseCyclesPerSecond, defaultSpeedFactor, interruptPeriodCycles, sliceInterval, speedFactors)
-import Cpu exposing (checkForInterrupt, interrupt, keyPressed, keyReleased, nStep, runCycles)
+import Cpu exposing (interrupt, keyPressed, keyReleased, nStep, runCycles)
 import EmulatorState exposing (ByteValue, EmulatorState(..), MachineState)
 import File exposing (File)
 import File.Select as Select

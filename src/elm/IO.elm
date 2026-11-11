@@ -68,68 +68,44 @@ io_out address machineState =
             Events [ SetCpu (SetPC newPc) ]
 
 
-{-| Input bits of port 1 of the Space Invaders cabinet. A bit is 1 while its button is pressed.
-Bit 3 is always 1.
+{-| The buttons of the Space Invaders cabinet. A bit is 1 while its button is pressed.
+
+Port 1: coin (bit 0), 2P start (bit 1), 1P start (bit 2), fire (bit 4), left (bit 5), right (bit 6).
+Bit 3 is always 1. In a one player game the game reads the player controls from port 1
+(the input routine at 0x17C0 of the ROM reads port 1 when the flag at 0x2067 is set).
+
 -}
-coinBit : ByteValue
-coinBit =
-    0x01
-
-
-start2Bit : ByteValue
-start2Bit =
-    0x02
-
-
-start1Bit : ByteValue
-start1Bit =
-    0x04
-
-
-fireBit : ByteValue
-fireBit =
-    0x10
-
-
-leftBit : ByteValue
-leftBit =
-    0x20
-
-
-rightBit : ByteValue
-rightBit =
-    0x40
-
-
-{-| The port 1 bit of a game key.
--}
-inputBit : GameKey -> ByteValue
-inputBit key =
+keyEvent : Bool -> GameKey -> MachineState -> MachineStateDiff
+keyEvent pressed key machineState =
     case key of
         Left ->
-            leftBit
+            portOneEvent pressed 0x20 machineState
 
         Right ->
-            rightBit
+            portOneEvent pressed 0x40 machineState
 
         Fire ->
-            fireBit
+            portOneEvent pressed 0x10 machineState
 
         Coin ->
-            coinBit
+            portOneEvent pressed 0x01 machineState
 
         Start1 ->
-            start1Bit
+            portOneEvent pressed 0x04 machineState
 
         Start2 ->
-            start2Bit
+            portOneEvent pressed 0x02 machineState
 
 
-pressInput : ByteValue -> MachineState -> MachineStateDiff
-pressInput bit machineState =
-    Events [ SetPort (SetOne (Bitwise.or machineState.ports.one bit)) ]
+portOneEvent : Bool -> ByteValue -> MachineState -> MachineStateDiff
+portOneEvent pressed bit machineState =
+    Events [ SetPort (SetOne (changeBit pressed bit machineState.ports.one)) ]
 
 
-releaseInput : ByteValue -> MachineState -> MachineStateDiff
-releaseInput bit machineState =
-    Events [ SetPort (SetOne (Bitwise.and machineState.ports.one (Bitwise.complement bit))) ]
+changeBit : Bool -> ByteValue -> ByteValue -> ByteValue
+changeBit pressed bit value =
+    if pressed then
+        Bitwise.or value bit
+
+    else
+        Bitwise.and value (Bitwise.complement bit)
