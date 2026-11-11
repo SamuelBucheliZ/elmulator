@@ -14,7 +14,21 @@ import UI.Msg exposing (Msg(..))
 -}
 nopModel : Model
 nopModel =
-    { initialModel | currentCpuState = Cpu.init (List.repeat 0x0100 0) }
+    withMachine (Cpu.init (List.repeat 0x0100 0)) initialModel
+
+
+withMachine : EmulatorState -> Model -> Model
+withMachine cpuState model =
+    let
+        machine =
+            model.machine
+    in
+    { model | machine = { machine | currentCpuState = cpuState } }
+
+
+isPaused : Model -> Bool
+isPaused model =
+    model.clock.paused
 
 
 {-| Delivers an emulation tick at each of the given times (in milliseconds).
@@ -26,7 +40,7 @@ tickAt times model =
 
 stepCount : Model -> Int
 stepCount model =
-    case model.currentCpuState of
+    case model.machine.currentCpuState of
         Valid machineState ->
             machineState.step
 
@@ -36,7 +50,7 @@ stepCount model =
 
 cycles : Model -> Int
 cycles model =
-    case model.currentCpuState of
+    case model.machine.currentCpuState of
         Valid machineState ->
             machineState.cpuState.cycleCount
 
@@ -59,7 +73,7 @@ all =
                 \() ->
                     let
                         paused =
-                            { nopModel | paused = True }
+                            { nopModel | clock = pausedClock nopModel.clock }
                     in
                     cycles (tickAt (List.range 1000 1500 |> List.map (\i -> i * 16)) paused)
                         |> Expect.equal 0
@@ -72,19 +86,19 @@ all =
                         twice =
                             Tuple.first (update TogglePause once)
                     in
-                    Expect.equal ( True, False ) ( once.paused, twice.paused )
+                    Expect.equal ( True, False ) ( isPaused once, isPaused twice )
             , test "resuming does not catch up on the time spent paused" <|
                 \() ->
                     let
                         paused =
-                            { nopModel | paused = True }
+                            { nopModel | clock = pausedClock nopModel.clock }
 
                         -- one second paused, then 100 ms running
                         afterPause =
                             tickAt (List.range 0 62 |> List.map (\i -> 1000 + i * 16)) paused
 
                         resumed =
-                            tickAt (List.range 0 6 |> List.map (\i -> 2000 + i * 16)) { afterPause | paused = False }
+                            tickAt (List.range 0 6 |> List.map (\i -> 2000 + i * 16)) (resumedModel afterPause)
                     in
                     -- about 104 ms of running time after the resume; a catch-up would show ~2 million cycles
                     cycles resumed
@@ -100,22 +114,22 @@ all =
                         result =
                             Tuple.first (update (NextStepsRequested 1) nopModel)
                     in
-                    Expect.equal ( 1, True ) ( stepCount result, result.paused )
+                    Expect.equal ( 1, True ) ( stepCount result, isPaused result )
             , test "stepping while running pauses first" <|
                 \() ->
                     let
                         running =
-                            { nopModel | paused = False }
+                            resumedModel nopModel
 
                         result =
                             Tuple.first (update (NextStepsRequested 3) running)
                     in
-                    Expect.equal ( 3, True ) ( stepCount result, result.paused )
+                    Expect.equal ( 3, True ) ( stepCount result, isPaused result )
             , test "the step count box is used by the execute button" <|
                 \() ->
                     let
                         withCount =
-                            { nopModel | nsteps = 5 }
+                            { nopModel | ui = withSteps 5 nopModel.ui }
                     in
                     Expect.equal 5 (stepCount (Tuple.first (update StepsSubmitted withCount)))
             , test "zero steps do nothing but pause" <|
@@ -124,7 +138,7 @@ all =
                         result =
                             Tuple.first (update (NextStepsRequested 0) nopModel)
                     in
-                    Expect.equal ( 0, True ) ( stepCount result, result.paused )
+                    Expect.equal ( 0, True ) ( stepCount result, isPaused result )
             ]
         , describe "loading and reset"
             [ test "a ROM starts running by default" <|
@@ -133,19 +147,19 @@ all =
                         loaded =
                             Tuple.first (update (RomLoaded (Bytes.Encode.encode romBytes)) initialModel)
                     in
-                    Expect.equal False loaded.paused
+                    Expect.equal False (isPaused loaded)
             , test "a ROM starts paused when that setting is on" <|
                 \() ->
                     let
                         loaded =
-                            Tuple.first (update (RomLoaded (Bytes.Encode.encode romBytes)) { initialModel | startPaused = True })
+                            Tuple.first (update (RomLoaded (Bytes.Encode.encode romBytes)) (withStartPaused True initialModel))
                     in
-                    Expect.equal ( True, True ) ( loaded.paused, loaded.startPaused )
+                    Expect.equal ( True, True ) ( isPaused loaded, loaded.clock.startPaused )
             , test "reset starts the program again and keeps the speed and the start setting" <|
                 \() ->
                     let
                         loaded =
-                            { initialModel | startPaused = True, speedFactor = 2 }
+                            withStartPaused True { initialModel | clock = withSpeed 2 initialModel.clock }
                                 |> update (RomLoaded (Bytes.Encode.encode romBytes))
                                 |> Tuple.first
                                 |> update (NextStepsRequested 3)
@@ -153,9 +167,42 @@ all =
                                 |> update Reset
                                 |> Tuple.first
                     in
-                    Expect.equal { steps = 0, paused = True, speed = 2, hasProgram = True } { steps = stepCount loaded, paused = loaded.paused, speed = loaded.speedFactor, hasProgram = loaded.data /= Nothing }
+                    Expect.equal { steps = 0, paused = True, speed = 2, hasProgram = True } { steps = stepCount loaded, paused = isPaused loaded, speed = loaded.clock.speedFactor, hasProgram = loaded.machine.data /= Nothing }
             , test "reset without a ROM does nothing" <|
                 \() ->
-                    Expect.equal Nothing (Tuple.first (update Reset initialModel)).data
+                    Expect.equal Nothing (Tuple.first (update Reset initialModel)).machine.data
             ]
         ]
+
+
+pausedClock : Main.Clock -> Main.Clock
+pausedClock clock =
+    { clock | paused = True }
+
+
+resumedModel : Model -> Model
+resumedModel model =
+    let
+        clock =
+            model.clock
+    in
+    { model | clock = { clock | paused = False } }
+
+
+withStartPaused : Bool -> Model -> Model
+withStartPaused startPaused model =
+    let
+        clock =
+            model.clock
+    in
+    { model | clock = { clock | startPaused = startPaused } }
+
+
+withSpeed : Float -> Main.Clock -> Main.Clock
+withSpeed factor clock =
+    { clock | speedFactor = factor }
+
+
+withSteps : Int -> Main.Ui -> Main.Ui
+withSteps count ui =
+    { ui | nsteps = count }

@@ -14,9 +14,14 @@ import UI.Msg exposing (Msg(..))
 modelAt : Float -> Model
 modelAt factor =
     { initialModel
-        | currentCpuState = Cpu.init (List.repeat 0x0100 0)
-        , speedFactor = factor
+        | machine = { data = Nothing, currentCpuState = Cpu.init (List.repeat 0x0100 0) }
+        , clock = withSpeed factor initialModel.clock
     }
+
+
+withSpeed : Float -> Main.Clock -> Main.Clock
+withSpeed factor clock =
+    { clock | speedFactor = factor }
 
 
 {-| Delivers emulation slices every 16 ms for `milliseconds` and returns the final model.
@@ -34,7 +39,7 @@ runSlices milliseconds factor =
 
 emulatedCycles : Model -> Int
 emulatedCycles model =
-    case model.currentCpuState of
+    case model.machine.currentCpuState of
         Valid machineState ->
             machineState.cpuState.cycleCount
 
@@ -68,7 +73,7 @@ all =
                         ]
         , test "the measured rate is about 2 MHz at speed 1" <|
             \() ->
-                (runSlices 1100 1).measuredCyclesPerSecond
+                (runSlices 1100 1).clock.measuredCyclesPerSecond
                     |> Expect.all
                         [ Expect.atLeast 1950000
                         , Expect.atMost 2050000

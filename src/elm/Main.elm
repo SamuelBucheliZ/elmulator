@@ -1,4 +1,4 @@
-module Main exposing (Model, initialModel, main, update)
+module Main exposing (Clock, Model, Ui, initialModel, main, update)
 
 import Array exposing (Array)
 import Bootstrap.Button as Button
@@ -50,45 +50,87 @@ main =
 -- MODEL
 
 
+{-| The whole application state, in three parts:
+
+  - the machine: the ROM and the emulated 8080 with its memory and ports;
+  - the clock: how far the emulated clock has run, and the speed and pause settings;
+  - the UI: what is shown on the page, which is not part of the machine.
+
+-}
 type alias Model =
+    { machine : Machine
+    , clock : Clock
+    , ui : Ui
+    }
+
+
+type alias Machine =
     { data : Maybe Bytes
     , currentCpuState : EmulatorState
-    , nsteps : Int
-    , speedFactor : Float
-    , paused : Bool
-    , showCode : Bool
-    , startPaused : Bool
+    }
 
-    -- emulation timing: the time of the last slice, cycles owed but not yet run, the cycle count
-    -- of the next RST 2 interrupt, and the cycles run in the current measurement window
+
+type alias Clock =
+    { paused : Bool
+    , startPaused : Bool
+    , speedFactor : Float
+
+    -- the time of the last slice, cycles owed but not yet run, the cycle count of the next
+    -- RST 2 interrupt, and the cycles run in the current measurement window
     , lastSliceMillis : Int
     , cycleRemainder : Float
     , nextInterruptDue : Int
     , windowStartMillis : Int
     , cyclesInWindow : Int
     , measuredCyclesPerSecond : Int
-    , screen : Html Msg
+    }
 
-    -- video RAM the current screen was rendered from, to skip redrawing an unchanged frame
+
+type alias Ui =
+    { showCode : Bool
+
+    -- the step count typed in the input box
+    , nsteps : Int
+
+    -- the video RAM the current screen was rendered from, to skip redrawing an unchanged frame
+    , screen : Html Msg
     , lastFrame : Maybe (Array ByteValue)
     }
 
 
 initialModel : Model
 initialModel =
+    { machine = initialMachine
+    , clock = initialClock
+    , ui = initialUi
+    }
+
+
+initialMachine : Machine
+initialMachine =
     { data = Nothing
     , currentCpuState = Invalid Nothing "No ROM loaded yet"
-    , nsteps = 0
-    , speedFactor = defaultSpeedFactor
-    , paused = False
-    , showCode = False
+    }
+
+
+initialClock : Clock
+initialClock =
+    { paused = False
     , startPaused = False
+    , speedFactor = defaultSpeedFactor
     , lastSliceMillis = 0
     , cycleRemainder = 0
     , nextInterruptDue = interruptPeriodCycles
     , windowStartMillis = 0
     , cyclesInWindow = 0
     , measuredCyclesPerSecond = 0
+    }
+
+
+initialUi : Ui
+initialUi =
+    { showCode = False
+    , nsteps = 0
     , screen = greenScreenHtml
     , lastFrame = Nothing
     }
@@ -123,21 +165,21 @@ update msg model =
 
         NextStepsRequested n ->
             -- stepping always pauses the emulator first, so that steps and running never interleave
-            case model.currentCpuState of
+            case model.machine.currentCpuState of
                 Valid currentCpuState ->
                     if n < 1 then
-                        ( { model | paused = True }, Cmd.none )
+                        ( pause model, Cmd.none )
 
                     else
-                        ( { model | paused = True, currentCpuState = nStep n currentCpuState }, Cmd.none )
+                        ( pause (withCpuState (nStep n currentCpuState) model), Cmd.none )
 
                 Invalid _ _ ->
-                    ( { model | paused = True }, Cmd.none )
+                    ( pause model, Cmd.none )
 
         KeyDown key ->
-            case model.currentCpuState of
+            case model.machine.currentCpuState of
                 Valid currentCpuState ->
-                    ( { model | currentCpuState = keyPressed key currentCpuState }
+                    ( withCpuState (keyPressed key currentCpuState) model
                     , Cmd.none
                     )
 
@@ -147,9 +189,9 @@ update msg model =
                     )
 
         KeyUp key ->
-            case model.currentCpuState of
+            case model.machine.currentCpuState of
                 Valid currentCpuState ->
-                    ( { model | currentCpuState = keyReleased key currentCpuState }
+                    ( withCpuState (keyReleased key currentCpuState) model
                     , Cmd.none
                     )
 
@@ -159,105 +201,35 @@ update msg model =
                     )
 
         EmulationWithInterrupt posix ->
-            if model.paused then
-                -- keep the clock and the measurement window at "now", so that resuming does not catch up
-                ( { model
-                    | lastSliceMillis = Time.posixToMillis posix
-                    , cycleRemainder = 0
-                    , windowStartMillis = Time.posixToMillis posix
-                    , cyclesInWindow = 0
-                  }
-                , Cmd.none
-                )
+            let
+                now =
+                    Time.posixToMillis posix
 
-            else
-                case model.currentCpuState of
-                    Valid currentCpuState ->
-                        let
-                            now =
-                                Time.posixToMillis posix
+                ( newCpuState, newClock ) =
+                    if model.clock.paused then
+                        ( model.machine.currentCpuState, keepClockAt now model.clock )
 
-                            -- the first slice has no earlier time to measure from; a long pause (e.g. a hidden
-                            -- tab) is capped so that the emulator does not try to catch up all at once
-                            elapsed =
-                                if model.lastSliceMillis == 0 then
-                                    0
-
-                                else
-                                    min 250 (now - model.lastSliceMillis)
-
-                            owed =
-                                model.cycleRemainder + baseCyclesPerSecond * model.speedFactor * toFloat elapsed / 1000
-
-                            cyclesToRun =
-                                floor owed
-
-                            cyclesBefore =
-                                currentCpuState.cpuState.cycleCount
-
-                            ( newCpuState, nextInterruptDue ) =
-                                if cyclesToRun > 0 then
-                                    runCycles (cyclesBefore + cyclesToRun) model.nextInterruptDue currentCpuState
-
-                                else
-                                    ( Valid currentCpuState, model.nextInterruptDue )
-
-                            -- an instruction may run past the target by a few cycles; the difference is owed later
-                            cyclesRun =
-                                case newCpuState of
-                                    Valid machineState ->
-                                        machineState.cpuState.cycleCount - cyclesBefore
-
-                                    Invalid _ _ ->
-                                        cyclesToRun
-
-                            windowElapsed =
-                                now - model.windowStartMillis
-
-                            ( measured, windowStart, inWindow ) =
-                                if windowElapsed >= 1000 then
-                                    ( round (toFloat (model.cyclesInWindow + cyclesRun) * 1000 / toFloat windowElapsed)
-                                    , now
-                                    , 0
-                                    )
-
-                                else
-                                    ( model.measuredCyclesPerSecond, model.windowStartMillis, model.cyclesInWindow + cyclesRun )
-                        in
-                        ( { model
-                            | currentCpuState = newCpuState
-                            , lastSliceMillis = now
-                            , cycleRemainder = owed - toFloat cyclesRun
-                            , nextInterruptDue = nextInterruptDue
-                            , windowStartMillis = windowStart
-                            , cyclesInWindow = inWindow
-                            , measuredCyclesPerSecond = measured
-                          }
-                        , Cmd.none
-                        )
-
-                    Invalid _ _ ->
-                        ( model
-                        , Cmd.none
-                        )
+                    else
+                        runSlice now model.clock model.machine.currentCpuState
+            in
+            ( withCpuState newCpuState { model | clock = newClock }
+            , Cmd.none
+            )
 
         RenderScreen _ ->
-            case model.currentCpuState of
+            case model.machine.currentCpuState of
                 Valid machineState ->
                     let
                         frame =
                             readMemorySlice 0x2400 0x3FFF machineState.memory
                     in
-                    if model.lastFrame == Just frame then
+                    if model.ui.lastFrame == Just frame then
                         ( model
                         , Cmd.none
                         )
 
                     else
-                        ( { model
-                            | screen = renderFrame frame
-                            , lastFrame = Just frame
-                          }
+                        ( withUi (\ui -> { ui | screen = renderFrame frame, lastFrame = Just frame }) model
                         , Cmd.none
                         )
 
@@ -267,9 +239,9 @@ update msg model =
                     )
 
         InterruptRequested ->
-            case model.currentCpuState of
+            case model.machine.currentCpuState of
                 Valid currentCpuState ->
-                    ( { model | currentCpuState = interrupt currentCpuState }
+                    ( withCpuState (interrupt currentCpuState) model
                     , Cmd.none
                     )
 
@@ -279,7 +251,7 @@ update msg model =
                     )
 
         Reset ->
-            case model.data of
+            case model.machine.data of
                 Just data ->
                     ( loadDataIntoMemory model data, Cmd.none )
 
@@ -287,22 +259,130 @@ update msg model =
                     ( model, Cmd.none )
 
         ToggleCode ->
-            ( { model | showCode = not model.showCode }, Cmd.none )
+            ( withUi (\ui -> { ui | showCode = not ui.showCode }) model, Cmd.none )
 
         TogglePause ->
-            ( { model | paused = not model.paused, windowStartMillis = 0, cyclesInWindow = 0 }, Cmd.none )
+            ( withClock (\clock -> { clock | paused = not clock.paused, windowStartMillis = 0, cyclesInWindow = 0 }) model
+            , Cmd.none
+            )
 
         StartPausedChanged startPaused ->
-            ( { model | startPaused = startPaused }, Cmd.none )
+            ( withClock (\clock -> { clock | startPaused = startPaused }) model, Cmd.none )
 
         SpeedSelected factor ->
-            ( { model | speedFactor = factor }, Cmd.none )
+            ( withClock (\clock -> { clock | speedFactor = factor }) model, Cmd.none )
 
         StepsUpdated n ->
-            ( { model | nsteps = Maybe.withDefault 0 (String.toInt n) }, Cmd.none )
+            ( withUi (\ui -> { ui | nsteps = Maybe.withDefault 0 (String.toInt n) }) model, Cmd.none )
 
         StepsSubmitted ->
-            update (NextStepsRequested model.nsteps) model
+            update (NextStepsRequested model.ui.nsteps) model
+
+
+withCpuState : EmulatorState -> Model -> Model
+withCpuState cpuState model =
+    let
+        machine =
+            model.machine
+    in
+    { model | machine = { machine | currentCpuState = cpuState } }
+
+
+withClock : (Clock -> Clock) -> Model -> Model
+withClock change model =
+    { model | clock = change model.clock }
+
+
+withUi : (Ui -> Ui) -> Model -> Model
+withUi change model =
+    { model | ui = change model.ui }
+
+
+pause : Model -> Model
+pause model =
+    withClock (\clock -> { clock | paused = True }) model
+
+
+{-| Keeps the clock and the measurement window at "now", so that resuming does not catch up.
+-}
+keepClockAt : Int -> Clock -> Clock
+keepClockAt now clock =
+    { clock
+        | lastSliceMillis = now
+        , cycleRemainder = 0
+        , windowStartMillis = now
+        , cyclesInWindow = 0
+    }
+
+
+{-| Runs one slice of emulation: the cycles owed since the last slice, at the selected speed.
+An error keeps the last known state and the clock is not advanced.
+-}
+runSlice : Int -> Clock -> EmulatorState -> ( EmulatorState, Clock )
+runSlice now clock state =
+    case state of
+        Valid currentCpuState ->
+            let
+                -- the first slice has no earlier time to measure from; a long pause (e.g. a hidden
+                -- tab) is capped so that the emulator does not try to catch up all at once
+                elapsed =
+                    if clock.lastSliceMillis == 0 then
+                        0
+
+                    else
+                        min 250 (now - clock.lastSliceMillis)
+
+                owed =
+                    clock.cycleRemainder + baseCyclesPerSecond * clock.speedFactor * toFloat elapsed / 1000
+
+                cyclesToRun =
+                    floor owed
+
+                cyclesBefore =
+                    currentCpuState.cpuState.cycleCount
+
+                ( newCpuState, nextInterruptDue ) =
+                    if cyclesToRun > 0 then
+                        runCycles (cyclesBefore + cyclesToRun) clock.nextInterruptDue currentCpuState
+
+                    else
+                        ( Valid currentCpuState, clock.nextInterruptDue )
+
+                -- an instruction may run past the target by a few cycles; the difference is owed later
+                cyclesRun =
+                    case newCpuState of
+                        Valid machineState ->
+                            machineState.cpuState.cycleCount - cyclesBefore
+
+                        Invalid _ _ ->
+                            cyclesToRun
+
+                windowElapsed =
+                    now - clock.windowStartMillis
+
+                ( measured, windowStart, inWindow ) =
+                    if windowElapsed >= 1000 then
+                        ( round (toFloat (clock.cyclesInWindow + cyclesRun) * 1000 / toFloat windowElapsed)
+                        , now
+                        , 0
+                        )
+
+                    else
+                        ( clock.measuredCyclesPerSecond, clock.windowStartMillis, clock.cyclesInWindow + cyclesRun )
+            in
+            ( newCpuState
+            , { clock
+                | lastSliceMillis = now
+                , cycleRemainder = owed - toFloat cyclesRun
+                , nextInterruptDue = nextInterruptDue
+                , windowStartMillis = windowStart
+                , cyclesInWindow = inWindow
+                , measuredCyclesPerSecond = measured
+              }
+            )
+
+        Invalid _ _ ->
+            ( state, clock )
 
 
 {-| Starts a program from its first instruction. The speed and the "start paused" setting
@@ -310,25 +390,21 @@ are kept; the program starts paused if that setting is on.
 -}
 loadDataIntoMemory : Model -> Bytes -> Model
 loadDataIntoMemory model data =
-    let
-        decodedFile =
-            decodeFile data
-
-        initialCpuState =
-            Cpu.init decodedFile
-    in
-    { model
-        | data = Just data
-        , currentCpuState = initialCpuState
-        , paused = model.startPaused
-        , lastSliceMillis = 0
-        , cycleRemainder = 0
-        , nextInterruptDue = interruptPeriodCycles
-        , windowStartMillis = 0
-        , cyclesInWindow = 0
-        , measuredCyclesPerSecond = 0
-        , screen = greenScreenHtml
-        , lastFrame = Nothing
+    { machine =
+        { data = Just data
+        , currentCpuState = Cpu.init (decodeFile data)
+        }
+    , clock =
+        { initialClock
+            | speedFactor = model.clock.speedFactor
+            , startPaused = model.clock.startPaused
+            , paused = model.clock.startPaused
+        }
+    , ui =
+        { initialUi
+            | showCode = model.ui.showCode
+            , nsteps = model.ui.nsteps
+        }
     }
 
 
@@ -338,7 +414,7 @@ loadDataIntoMemory model data =
 
 view : Model -> Html Msg
 view model =
-    case model.data of
+    case model.machine.data of
         Nothing ->
             Grid.container []
                 [ CDN.stylesheet -- creates an inline style node with the Bootstrap CSS
@@ -353,7 +429,7 @@ view model =
                             ]
                             [ text "(l)oad rom" ]
                         , text " "
-                        , startPausedCheckbox model.startPaused
+                        , startPausedCheckbox model.clock.startPaused
                         ]
                     ]
                 ]
@@ -366,27 +442,27 @@ view model =
                 , Grid.row []
                     [ Grid.col [ Col.lg7 ]
                         [ h3 [] [ text "Screen" ]
-                        , model.screen
+                        , model.ui.screen
                         , keyLegend
                         ]
                     , Grid.col [ Col.lg5 ]
                         ([ h3 [] [ text "CPU" ]
-                         , withMachine model.currentCpuState
+                         , withMachine model.machine.currentCpuState
                             (cpuPanel
-                                { paused = model.paused
-                                , speed = String.fromFloat model.speedFactor ++ "x"
-                                , measured = megahertz (toFloat model.measuredCyclesPerSecond) ++ " MHz"
+                                { paused = model.clock.paused
+                                , speed = String.fromFloat model.clock.speedFactor ++ "x"
+                                , measured = megahertz (toFloat model.clock.measuredCyclesPerSecond) ++ " MHz"
                                 }
                             )
                          , h3 [ class "mt-3" ] [ text "Ports" ]
-                         , withMachine model.currentCpuState portsPanel
+                         , withMachine model.machine.currentCpuState portsPanel
                          , h3 [ class "mt-3" ] [ text "Stack" ]
-                         , withMachine model.currentCpuState stackPanel
+                         , withMachine model.machine.currentCpuState stackPanel
                          , div [ class "mt-3" ]
                             [ Button.button
                                 [ Button.outlineSecondary, Button.small, Button.attrs [ onClick ToggleCode ] ]
                                 [ text
-                                    (if model.showCode then
+                                    (if model.ui.showCode then
                                         "hide code"
 
                                      else
@@ -395,9 +471,9 @@ view model =
                                 ]
                             ]
                          ]
-                            ++ (if model.showCode then
+                            ++ (if model.ui.showCode then
                                     [ h3 [ class "mt-3" ] [ text "Code" ]
-                                    , withMachine model.currentCpuState codePanel
+                                    , withMachine model.machine.currentCpuState codePanel
                                     ]
 
                                 else
@@ -447,11 +523,11 @@ toolbar model =
         [ toolbarSection "Program"
             [ Button.button [ Button.outlineSuccess, Button.small, Button.attrs [ onClick RomRequested ] ] [ text "(l)oad ROM" ]
             , Button.button [ Button.outlineDanger, Button.small, Button.attrs [ onClick Reset ] ] [ text "(r)eset" ]
-            , startPausedCheckbox model.startPaused
+            , startPausedCheckbox model.clock.startPaused
             ]
         , toolbarSection "Run"
             [ Button.button
-                [ if model.paused then
+                [ if model.clock.paused then
                     Button.primary
 
                   else
@@ -460,7 +536,7 @@ toolbar model =
                 , Button.attrs [ onClick TogglePause ]
                 ]
                 [ text
-                    (if model.paused then
+                    (if model.clock.paused then
                         "(p)lay"
 
                      else
@@ -476,7 +552,7 @@ toolbar model =
                     [ Input.id "steps"
                     , Input.small
                     , Input.onInput StepsUpdated
-                    , Input.value (String.fromInt model.nsteps)
+                    , Input.value (String.fromInt model.ui.nsteps)
                     ]
                 ]
             , span [ class "mx-2 small" ] [ text "instructions" ]
@@ -487,7 +563,7 @@ toolbar model =
         , toolbarSection "Interrupt"
             [ Button.button [ Button.outlinePrimary, Button.small, Button.attrs [ onClick InterruptRequested ] ] [ text "(i)nterrupt now" ]
             ]
-        , toolbarSection "Speed (relative to a real 8080 at 2 MHz)" (speedButtons model.speedFactor)
+        , toolbarSection "Speed (relative to a real 8080 at 2 MHz)" (speedButtons model.clock.speedFactor)
         ]
 
 
