@@ -399,6 +399,93 @@ all =
                     in
                     Expect.equal ( ( 0x18, 0x08 ), ( 0x08, 0x08 ) ) ( ( pressed.ports.one, pressed.ports.two ), ( released.ports.one, released.ports.two ) )
             ]
+        , describe "generated instruction families"
+            [ test "MOV M,B writes B to the byte at HL" <|
+                \() ->
+                    let
+                        base =
+                            machineWith { baseCpu | b = 0x5A, h = 0x00, l = 0x20 } [ 0x70 ]
+                    in
+                    executeOne base |> Result.map (\ms -> Array.get 0x20 ms.memory) |> Expect.equal (Ok (Just 0x5A))
+            , test "MOV A,M reads the byte at HL" <|
+                \() ->
+                    let
+                        base =
+                            machineWith { baseCpu | h = 0x00, l = 0x20 } [ 0x7E ]
+
+                        withByte =
+                            { base | memory = Array.set 0x20 0x77 base.memory }
+                    in
+                    executeOne withByte |> Result.map (\ms -> ms.cpuState.a) |> Expect.equal (Ok 0x77)
+            , test "INR M wraps 0xFF to 0 in memory and sets Z" <|
+                \() ->
+                    let
+                        base =
+                            machineWith { baseCpu | h = 0x00, l = 0x20 } [ 0x34 ]
+
+                        withByte =
+                            { base | memory = Array.set 0x20 0xFF base.memory }
+
+                        result =
+                            executeOne withByte
+                                |> Result.map (\ms -> ( Array.get 0x20 ms.memory, ms.cpuState.conditionCodes.z ))
+                    in
+                    Expect.equal (Ok ( Just 0x00, True )) result
+            , test "ADC B adds the carry flag" <|
+                \() ->
+                    let
+                        cpu =
+                            { baseCpu | a = 0x0F, b = 0x01, conditionCodes = { noFlags | cy = True } }
+                    in
+                    executeOne (machineWith cpu [ 0x88 ])
+                        |> Result.map (\ms -> ( ms.cpuState.a, ms.cpuState.conditionCodes.ac ))
+                        |> Expect.equal (Ok ( 0x11, True ))
+            , test "SUB B sets carry on borrow" <|
+                \() ->
+                    let
+                        cpu =
+                            { baseCpu | a = 0x01, b = 0x02 }
+                    in
+                    executeOne (machineWith cpu [ 0x90 ])
+                        |> Result.map (\ms -> ( ms.cpuState.a, ms.cpuState.conditionCodes.cy ))
+                        |> Expect.equal (Ok ( 0xFF, True ))
+            , test "LXI D loads the pair with the low byte first" <|
+                \() ->
+                    executeOne (machineWith baseCpu [ 0x11, 0x34, 0x12 ])
+                        |> Result.map (\ms -> ( ms.cpuState.d, ms.cpuState.e, ms.cpuState.pc ))
+                        |> Expect.equal (Ok ( 0x12, 0x34, 0x03 ))
+            , test "DAD D adds DE to HL and sets carry" <|
+                \() ->
+                    let
+                        cpu =
+                            { baseCpu | d = 0xFF, e = 0xFF, h = 0x00, l = 0x02 }
+                    in
+                    executeOne (machineWith cpu [ 0x19 ])
+                        |> Result.map (\ms -> ( ms.cpuState.h, ms.cpuState.l, ms.cpuState.conditionCodes.cy ))
+                        |> Expect.equal (Ok ( 0x00, 0x01, True ))
+            , test "INX SP wraps 0xFFFF to 0" <|
+                \() ->
+                    executeOne (machineWith { baseCpu | sp = 0xFFFF } [ 0x33 ])
+                        |> Result.map (\ms -> ms.cpuState.sp)
+                        |> Expect.equal (Ok 0x00)
+            , test "JPE jumps when the parity flag is set and falls through otherwise" <|
+                \() ->
+                    let
+                        odd =
+                            machineWith { baseCpu | conditionCodes = { noFlags | p = False } } [ 0xEA, 0x34, 0x12 ]
+
+                        even =
+                            machineWith { baseCpu | conditionCodes = { noFlags | p = True } } [ 0xEA, 0x34, 0x12 ]
+                    in
+                    Expect.equal
+                        ( Result.map (\ms -> ms.cpuState.pc) (executeOne odd), Result.map (\ms -> ms.cpuState.pc) (executeOne even) )
+                        ( Ok 0x03, Ok 0x1234 )
+            , test "HLT stays on its address" <|
+                \() ->
+                    executeOne (machineWith baseCpu [ 0x76 ])
+                        |> Result.map (\ms -> ms.cpuState.pc)
+                        |> Expect.equal (Ok 0x00)
+            ]
         , describe "instruction coverage"
             [ test "every documented 8080 opcode is implemented" <|
                 \() ->
