@@ -14,8 +14,9 @@ Keys pressed while typing in a text field (the step count) are ignored.
 
 -}
 
+import Cabinet exposing (gameKey, spaceInvaders)
 import Json.Decode as Decode
-import UI.Msg exposing (GameKey(..), Msg(..))
+import UI.Msg exposing (GameKey, Msg(..))
 
 
 keyDecoderDown : Decode.Decoder Msg
@@ -43,7 +44,7 @@ keyDecoderDown =
                         Decode.succeed InterruptRequested
 
                     _ ->
-                        case gameKey key of
+                        case gameKey spaceInvaders key of
                             Just gameKeyPressed ->
                                 Decode.succeed (KeyDown gameKeyPressed)
 
@@ -57,40 +58,13 @@ keyDecoderUp =
     keyDecoder
         |> Decode.andThen
             (\key ->
-                case gameKey key of
+                case gameKey spaceInvaders key of
                     Just gameKeyReleased ->
                         Decode.succeed (KeyUp gameKeyReleased)
 
                     Nothing ->
                         Decode.fail "Pressed key is not an Elmulator shortcut"
             )
-
-
-{-| The game button of a key on the keyboard.
--}
-gameKey : String -> Maybe GameKey
-gameKey key =
-    case key of
-        "a" ->
-            Just Left
-
-        "d" ->
-            Just Right
-
-        "s" ->
-            Just Fire
-
-        "1" ->
-            Just Start1
-
-        "2" ->
-            Just Start2
-
-        "c" ->
-            Just Coin
-
-        _ ->
-            Nothing
 
 
 {-| The pressed key, unless it was typed into a text field.

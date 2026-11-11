@@ -2,6 +2,7 @@ module Cpu exposing (..)
 
 import Array exposing (Array)
 import Bitwise
+import Cabinet
 import Config exposing (interruptPeriodCycles)
 import EmulatorState exposing (AddressValue, ByteValue, ConditionCodes, CpuState, EmulatorState(..), Flag, MachineState, MachineStateDiff(..), MachineStateDiffEvent(..), Memory, Ports, RegisterValue, SetCpuStateEvent(..), SetFlagEvent(..), SetPortEvent(..), SetShiftRegisterEvent(..), ShiftRegister)
 import IO exposing (keyEvent)
@@ -436,8 +437,7 @@ initShiftRegister =
 
 initPorts : Ports
 initPorts =
-    -- bit 3 is always 1; no button is pressed at power on
-    Ports 8 8
+    Cabinet.spaceInvaders.initialPorts
 
 
 keyPressed : GameKey -> MachineState -> EmulatorState
