@@ -315,6 +315,37 @@ all =
                 \() ->
                     Expect.equal (Just 11) (Maybe.map OpCode.getCycles (OpCodeTable.getOpCodeFromTable 0xCC))
             ]
+        , describe "interrupt timing"
+            [ test "RST 2 is raised once the cycle count passes the due cycle, when interrupts are enabled" <|
+                \() ->
+                    let
+                        cpu =
+                            { baseCpu | intEnable = True }
+
+                        result =
+                            case Cpu.runCycles 40000 33333 (machineWith cpu []) of
+                                ( Valid ms, nextDue ) ->
+                                    Ok { pc = ms.cpuState.pc, intEnable = ms.cpuState.intEnable, nextDue = nextDue }
+
+                                ( Invalid _ message, _ ) ->
+                                    Err message
+                    in
+                    -- the interrupt at cycle 33336 jumps to 0x0010 and disables interrupts; the NOPs after it
+                    -- run from there, 4 cycles each, until 40000 cycles
+                    Expect.equal (Ok { pc = 0x10 + 1666, intEnable = False, nextDue = 66666 }) result
+            , test "a due interrupt is skipped while interrupts are disabled, and the schedule continues" <|
+                \() ->
+                    let
+                        result =
+                            case Cpu.runCycles 40000 33333 (machineWith baseCpu []) of
+                                ( Valid ms, nextDue ) ->
+                                    Ok { pc = ms.cpuState.pc, nextDue = nextDue }
+
+                                ( Invalid _ message, _ ) ->
+                                    Err message
+                    in
+                    Expect.equal (Ok { pc = 0x2710, nextDue = 66666 }) result
+            ]
         , describe "instruction coverage"
             [ test "every documented 8080 opcode is implemented" <|
                 \() ->

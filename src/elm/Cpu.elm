@@ -2,7 +2,7 @@ module Cpu exposing (..)
 
 import Array exposing (Array)
 import Bitwise
-import Config exposing (interrupt_every)
+import Config exposing (interruptPeriodCycles)
 import EmulatorState exposing (AddressValue, ByteValue, ConditionCodes, CpuState, EmulatorState(..), Flag, MachineState, MachineStateDiff(..), MachineStateDiffEvent(..), Memory, Ports, RegisterValue, SetCpuStateEvent(..), SetFlagEvent(..), SetPortEvent(..), SetShiftRegisterEvent(..), ShiftRegister)
 import IO exposing (pressLeft, pressRight, pressSpace, relaseLeft, relaseRight, relaseSpace)
 import MachineInstructions exposing (push_)
@@ -45,35 +45,34 @@ nStep n machineState =
         ns
 
 
-nStep_withInterrupt : Int -> MachineState -> EmulatorState
-nStep_withInterrupt n machineState =
-    let
-        ns =
-            oneStep machineState
-    in
-    if n > 1 then
-        case ns of
-            Valid cs ->
-                if modBy interrupt_every machineState.step == 0 then
-                    let
-                        newNs =
-                            checkForInterrupt cs
-                    in
-                    case newNs of
-                        Valid ncs ->
-                            nStep_withInterrupt (n - 1) ncs
+{-| Runs instructions until the cycle counter reaches `targetCycles`.
 
-                        Invalid _ _ ->
-                            newNs
+Every `interruptPeriodCycles` the RST 2 interrupt is raised. `nextInterruptDue` is the cycle
+count of the next one; it moves on by one period each time, whether or not the CPU accepts
+the interrupt (the video timing keeps its rhythm). Returns the new state and the next due cycle.
 
-                else
-                    nStep_withInterrupt (n - 1) cs
-
-            Invalid _ _ ->
-                ns
+-}
+runCycles : Int -> Int -> MachineState -> ( EmulatorState, Int )
+runCycles targetCycles nextInterruptDue machineState =
+    if machineState.cpuState.cycleCount >= targetCycles then
+        ( Valid machineState, nextInterruptDue )
 
     else
-        ns
+        case oneStep machineState of
+            Invalid previous message ->
+                ( Invalid previous message, nextInterruptDue )
+
+            Valid next ->
+                if next.cpuState.cycleCount >= nextInterruptDue then
+                    case checkForInterrupt next of
+                        Valid interrupted ->
+                            runCycles targetCycles (nextInterruptDue + interruptPeriodCycles) interrupted
+
+                        Invalid previous message ->
+                            ( Invalid previous message, nextInterruptDue + interruptPeriodCycles )
+
+                else
+                    runCycles targetCycles nextInterruptDue next
 
 
 checkForInterrupt : MachineState -> EmulatorState

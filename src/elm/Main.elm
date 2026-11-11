@@ -1,4 +1,4 @@
-module Main exposing (main)
+module Main exposing (Model, initialModel, main, update)
 
 import Array exposing (Array)
 import Bootstrap.Button as Button
@@ -11,8 +11,8 @@ import Bytes exposing (Bytes)
 import Canvas exposing (Renderable, rect, shapes)
 import Canvas.Settings exposing (fill)
 import Color exposing (Color)
-import Config exposing (clock, speed, steps_per_clock)
-import Cpu exposing (checkForInterrupt, interrupt, keyPressed, keyReleased, nStep, nStep_withInterrupt)
+import Config exposing (baseCyclesPerSecond, defaultSpeedFactor, interruptPeriodCycles, sliceInterval, speedFactors)
+import Cpu exposing (checkForInterrupt, interrupt, keyPressed, keyReleased, nStep, runCycles)
 import EmulatorState exposing (ByteValue, EmulatorState(..), MachineState)
 import File exposing (File)
 import File.Select as Select
@@ -55,9 +55,16 @@ type alias Model =
     , disassembledProgram : Maybe String
     , currentCpuState : EmulatorState
     , nsteps : Int
-    , ticks : Int
-    , ticksDiff : Float
-    , ticksDiffReal : Float
+    , speedFactor : Float
+
+    -- emulation timing: the time of the last slice, cycles owed but not yet run, the cycle count
+    -- of the next RST 2 interrupt, and the cycles run in the current measurement window
+    , lastSliceMillis : Int
+    , cycleRemainder : Float
+    , nextInterruptDue : Int
+    , windowStartMillis : Int
+    , cyclesInWindow : Int
+    , measuredCyclesPerSecond : Int
     , screen : Html Msg
 
     -- video RAM the current screen was rendered from, to skip redrawing an unchanged frame
@@ -65,9 +72,27 @@ type alias Model =
     }
 
 
+initialModel : Model
+initialModel =
+    { data = Nothing
+    , disassembledProgram = Nothing
+    , currentCpuState = Invalid Nothing "No ROM loaded yet"
+    , nsteps = 0
+    , speedFactor = defaultSpeedFactor
+    , lastSliceMillis = 0
+    , cycleRemainder = 0
+    , nextInterruptDue = interruptPeriodCycles
+    , windowStartMillis = 0
+    , cyclesInWindow = 0
+    , measuredCyclesPerSecond = 0
+    , screen = greenScreenHtml
+    , lastFrame = Nothing
+    }
+
+
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model Nothing Nothing (Invalid Nothing "No ROM loaded yet") 0 0 0 0 greenScreenHtml Nothing, Cmd.none )
+    ( initialModel, Cmd.none )
 
 
 
@@ -140,39 +165,68 @@ update msg model =
                     , Cmd.none
                     )
 
-        Emulation posix ->
-            case model.currentCpuState of
-                Valid currentCpuState ->
-                    let
-                        lastTicks =
-                            model.ticks
-                    in
-                    ( { model
-                        | currentCpuState = nStep 2000 currentCpuState
-                        , ticks = Time.posixToMillis posix
-                        , ticksDiff = toFloat (Time.posixToMillis posix - lastTicks)
-                        , ticksDiffReal = toFloat (Time.posixToMillis posix - lastTicks)
-                      }
-                    , Cmd.none
-                    )
-
-                Invalid _ _ ->
-                    ( model
-                    , Cmd.none
-                    )
-
         EmulationWithInterrupt posix ->
             case model.currentCpuState of
                 Valid currentCpuState ->
                     let
-                        lastTicks =
-                            model.ticks
+                        now =
+                            Time.posixToMillis posix
+
+                        -- the first slice has no earlier time to measure from; a long pause (e.g. a hidden
+                        -- tab) is capped so that the emulator does not try to catch up all at once
+                        elapsed =
+                            if model.lastSliceMillis == 0 then
+                                0
+
+                            else
+                                min 250 (now - model.lastSliceMillis)
+
+                        owed =
+                            model.cycleRemainder + baseCyclesPerSecond * model.speedFactor * toFloat elapsed / 1000
+
+                        cyclesToRun =
+                            floor owed
+
+                        cyclesBefore =
+                            currentCpuState.cpuState.cycleCount
+
+                        ( newCpuState, nextInterruptDue ) =
+                            if cyclesToRun > 0 then
+                                runCycles (cyclesBefore + cyclesToRun) model.nextInterruptDue currentCpuState
+
+                            else
+                                ( Valid currentCpuState, model.nextInterruptDue )
+
+                        -- an instruction may run past the target by a few cycles; the difference is owed later
+                        cyclesRun =
+                            case newCpuState of
+                                Valid machineState ->
+                                    machineState.cpuState.cycleCount - cyclesBefore
+
+                                Invalid _ _ ->
+                                    cyclesToRun
+
+                        windowElapsed =
+                            now - model.windowStartMillis
+
+                        ( measured, windowStart, inWindow ) =
+                            if windowElapsed >= 1000 then
+                                ( round (toFloat (model.cyclesInWindow + cyclesRun) * 1000 / toFloat windowElapsed)
+                                , now
+                                , 0
+                                )
+
+                            else
+                                ( model.measuredCyclesPerSecond, model.windowStartMillis, model.cyclesInWindow + cyclesRun )
                     in
                     ( { model
-                        | currentCpuState = nStep_withInterrupt steps_per_clock currentCpuState
-                        , ticks = Time.posixToMillis posix
-                        , ticksDiff = toFloat (Time.posixToMillis posix - lastTicks)
-                        , ticksDiffReal = toFloat (Time.posixToMillis posix - lastTicks)
+                        | currentCpuState = newCpuState
+                        , lastSliceMillis = now
+                        , cycleRemainder = owed - toFloat cyclesRun
+                        , nextInterruptDue = nextInterruptDue
+                        , windowStartMillis = windowStart
+                        , cyclesInWindow = inWindow
+                        , measuredCyclesPerSecond = measured
                       }
                     , Cmd.none
                     )
@@ -220,7 +274,10 @@ update msg model =
                     )
 
         Reset ->
-            init ()
+            ( { initialModel | speedFactor = model.speedFactor }, Cmd.none )
+
+        SpeedSelected factor ->
+            ( { model | speedFactor = factor }, Cmd.none )
 
         StepsUpdated n ->
             ( { model | nsteps = Maybe.withDefault 0 (String.toInt n) }, Cmd.none )
@@ -250,7 +307,11 @@ loadDataIntoMemory _ data =
         disassembledProgram =
             disassemble data
     in
-    Model (Just data) (Just disassembledProgram) initialCpuState 0 0 0 0 greenScreenHtml Nothing
+    { initialModel
+        | data = Just data
+        , disassembledProgram = Just disassembledProgram
+        , currentCpuState = initialCpuState
+    }
 
 
 
@@ -327,6 +388,7 @@ view model =
                         ]
                     ]
                     [ text "(r)eset" ]
+                , speedControls model.speedFactor
                 , Grid.row []
                     [ Grid.col []
                         [ h3 [] [ text "Screen" ]
@@ -335,8 +397,8 @@ view model =
                     , Grid.col []
                         [ h3 [] [ text "Machine State" ]
                         , pre [] [ text (cpustate model.currentCpuState) ]
-                        , pre [] [ text ("speed: " ++ String.fromFloat speed ++ " ms for 1ms") ]
-                        , pre [] [ text ("clock diff: " ++ String.fromFloat (model.ticksDiffReal - clock) ++ " ms") ]
+                        , pre [] [ text ("speed: " ++ String.fromFloat model.speedFactor ++ "x (target " ++ megahertz (baseCyclesPerSecond * model.speedFactor) ++ " MHz)") ]
+                        , pre [] [ text ("measured: " ++ megahertz (toFloat model.measuredCyclesPerSecond) ++ " MHz") ]
                         ]
                     , Grid.col []
                         [ h3 [] [ text "Code" ]
@@ -344,6 +406,32 @@ view model =
                         ]
                     ]
                 ]
+
+
+{-| Formats a cycles per second value as MHz with two decimals.
+-}
+megahertz : Float -> String
+megahertz cyclesPerSecond =
+    String.fromFloat (toFloat (round (cyclesPerSecond / 10000)) / 100)
+
+
+speedControls : Float -> Html Msg
+speedControls selected =
+    div [] <|
+        text "speed:  "
+            :: List.map
+                (\factor ->
+                    Button.button
+                        [ if factor == selected then
+                            Button.primary
+
+                          else
+                            Button.outlinePrimary
+                        , Button.attrs [ onClick (SpeedSelected factor) ]
+                        ]
+                        [ text (String.fromFloat factor ++ "x") ]
+                )
+                speedFactors
 
 
 pageHeader : Html Msg
@@ -386,8 +474,7 @@ subscriptions _ =
         [ Browser.Events.onKeyDown keyDecoderDown
         , Browser.Events.onKeyUp keyDecoderUp
 
-        --, Time.every 1 Emulation
         --, Time.every 17 TickInterrupt
-        , Time.every 40 RenderScreen -- TODO: Probably should use cycle count, but this will do for now
-        , Time.every clock EmulationWithInterrupt
+        , Time.every 40 RenderScreen
+        , Time.every sliceInterval EmulationWithInterrupt
         ]

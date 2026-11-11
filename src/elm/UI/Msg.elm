@@ -10,7 +10,6 @@ type Msg
     | RomSelected File
     | RomLoaded Bytes
     | NextStepsRequested Int
-    | Emulation Time.Posix
     | EmulationWithInterrupt Time.Posix
     | KeyDown GameKey
     | KeyUp GameKey
@@ -20,6 +19,7 @@ type Msg
     | InterruptRequested
     | StepsUpdated String
     | StepsSubmitted
+    | SpeedSelected Float
 
 
 type GameKey
