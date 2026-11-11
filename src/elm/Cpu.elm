@@ -3,7 +3,6 @@ module Cpu exposing (..)
 import Array exposing (Array)
 import Bitwise
 import Config exposing (interrupt_every)
-import CpuValidator exposing (validate)
 import EmulatorState exposing (AddressValue, ByteValue, ConditionCodes, CpuState, EmulatorState(..), Flag, MachineState, MachineStateDiff(..), MachineStateDiffEvent(..), Memory, Ports, RegisterValue, SetCpuStateEvent(..), SetFlagEvent(..), SetPortEvent(..), SetShiftRegisterEvent(..), ShiftRegister)
 import IO exposing (pressLeft, pressRight, pressSpace, relaseLeft, relaseRight, relaseSpace)
 import MachineInstructions exposing (push_)
@@ -110,11 +109,19 @@ generateInterruptEvents machineState number =
         newPc =
             8 * number
 
+        -- while halted (on a HLT) the return address is the instruction after it
+        returnPc =
+            if getCurrentOpCode machineState == 0x76 then
+                modBy 0x00010000 (machineState.cpuState.pc + 1)
+
+            else
+                machineState.cpuState.pc
+
         pcHigh =
-            Bitwise.shiftRightBy 8 (Bitwise.and machineState.cpuState.pc 0xFF00)
+            Bitwise.shiftRightBy 8 (Bitwise.and returnPc 0xFF00)
 
         pcLow =
-            Bitwise.and machineState.cpuState.pc 0xFF
+            Bitwise.and returnPc 0xFF
     in
     let
         pushEvents =
@@ -123,7 +130,11 @@ generateInterruptEvents machineState number =
     Events
         (List.concat
             [ pushEvents
-            , [ SetCpu (SetPC newPc) ]
+
+            -- Accepting an interrupt disables further interrupts until EI is executed
+            , [ SetCpu (SetIntEnable False)
+              , SetCpu (SetPC newPc)
+              ]
             ]
         )
 
@@ -211,7 +222,7 @@ apply machineStateDiff cpuState =
             --else
             --    validate (List.foldl applyEvent { cpuState | step = newStep } machineStateDiffEvents)
             -- Enable above to search for an invalid event
-            validate (List.foldl applyEvent { cpuState | step = newStep } machineStateDiffEvents)
+            Valid (List.foldl applyEvent { cpuState | step = newStep } machineStateDiffEvents)
 
 
 invalidEvent : List MachineStateDiffEvent -> Bool
@@ -278,11 +289,19 @@ applyEvent event machineState =
             { machineState | ports = newPorts }
 
 
+{-| The 8080 has a 16 bit address space. Stack and pointer arithmetic can step
+outside of it (e.g. PUSH with SP=0), so addresses wrap around like the hardware.
+-}
+wrapAddress : AddressValue -> AddressValue
+wrapAddress address =
+    modBy 0x00010000 address
+
+
 setMemory : AddressValue -> ByteValue -> MachineState -> MachineState
 setMemory address value cpuState =
     let
         updatedMemory =
-            Array.set address value cpuState.memory
+            Array.set (wrapAddress address) value cpuState.memory
     in
     { cpuState | memory = updatedMemory }
 
@@ -311,11 +330,12 @@ setCpuState event cpuState =
         SetRegisterL register ->
             { cpuState | l = register }
 
+        -- PC and SP are 16 bit registers: wrap instead of growing past 0xFFFF or below 0
         SetPC value ->
-            { cpuState | pc = value }
+            { cpuState | pc = modBy 0x00010000 value }
 
         SetSP value ->
-            { cpuState | sp = value }
+            { cpuState | sp = modBy 0x00010000 value }
 
         SetFlag setFlagEvent ->
             { cpuState | conditionCodes = setFlag setFlagEvent cpuState.conditionCodes }
@@ -366,7 +386,7 @@ setPorts event ports =
             { ports | one = data }
 
         SetTwo data ->
-            { ports | one = data }
+            { ports | two = data }
 
 
 init : List ByteValue -> EmulatorState
@@ -424,8 +444,9 @@ initMemory rom =
         lengthRom =
             List.length rom
 
+        -- the 8080 has a 16 bit address space, i.e. 0x10000 bytes of memory
         paddingAmount =
-            0xFFFF - lengthRom
+            0x00010000 - lengthRom
 
         padding =
             List.repeat paddingAmount 0

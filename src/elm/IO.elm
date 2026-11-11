@@ -10,8 +10,8 @@ io_in address machineState =
         newPc =
             machineState.cpuState.pc + 2
 
-        temp =
-            Bitwise.or (Bitwise.shiftLeftBy machineState.shiftRegister.upper 8) machineState.shiftRegister.lower
+        shiftRegisterValue =
+            Bitwise.or (Bitwise.shiftLeftBy 8 machineState.shiftRegister.upper) machineState.shiftRegister.lower
     in
     case address of
         1 ->
@@ -27,12 +27,8 @@ io_in address machineState =
                 ]
 
         3 ->
-            let
-                v =
-                    Bitwise.or (Bitwise.shiftLeftBy 8 machineState.shiftRegister.upper) machineState.shiftRegister.lower
-            in
             Events
-                [ SetCpu (SetRegisterA (Bitwise.and (Bitwise.shiftRightBy (modBy 256 (8 - machineState.shiftRegister.offset)) temp) 0xFF))
+                [ SetCpu (SetRegisterA (Bitwise.and (Bitwise.shiftRightBy (8 - machineState.shiftRegister.offset) shiftRegisterValue) 0xFF))
                 , SetCpu (SetPC newPc)
                 ]
 

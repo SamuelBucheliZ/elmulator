@@ -17,7 +17,7 @@ import EmulatorState exposing (ByteValue, EmulatorState(..), MachineState)
 import File exposing (File)
 import File.Select as Select
 import FileDecoder exposing (decodeFile)
-import Graphics exposing (Pixel(..), renderScreen, toPixels)
+import Graphics exposing (canvasHeight, canvasWidth, renderScreen)
 import Html exposing (Html, div, h1, h3, p, pre, text)
 import Html.Attributes exposing (class, height, width)
 import Html.Events exposing (onClick)
@@ -59,12 +59,15 @@ type alias Model =
     , ticksDiff : Float
     , ticksDiffReal : Float
     , screen : Html Msg
+
+    -- video RAM the current screen was rendered from, to skip redrawing an unchanged frame
+    , lastFrame : Maybe (Array ByteValue)
     }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model Nothing Nothing (Invalid Nothing "No ROM loaded yet") 0 0 0 0 greenScreenHtml, Cmd.none )
+    ( Model Nothing Nothing (Invalid Nothing "No ROM loaded yet") 0 0 0 0 greenScreenHtml Nothing, Cmd.none )
 
 
 
@@ -181,22 +184,28 @@ update msg model =
 
         RenderScreen _ ->
             case model.currentCpuState of
-                Valid _ ->
+                Valid machineState ->
                     let
-                        renderedScreen =
-                            screen model.currentCpuState
+                        frame =
+                            readMemorySlice 0x2400 0x3FFF machineState.memory
                     in
-                    ( { model
-                    | screen = renderedScreen
-                    }
-                    , Cmd.none
-                    )
+                    if model.lastFrame == Just frame then
+                        ( model
+                        , Cmd.none
+                        )
+
+                    else
+                        ( { model
+                            | screen = renderFrame frame
+                            , lastFrame = Just frame
+                          }
+                        , Cmd.none
+                        )
 
                 Invalid _ _ ->
                     ( model
                     , Cmd.none
                     )
-
 
         InterruptRequested ->
             case model.currentCpuState of
@@ -241,7 +250,7 @@ loadDataIntoMemory _ data =
         disassembledProgram =
             disassemble data
     in
-    Model (Just data) (Just disassembledProgram) initialCpuState 0 0 0 0 greenScreenHtml
+    Model (Just data) (Just disassembledProgram) initialCpuState 0 0 0 0 greenScreenHtml Nothing
 
 
 
@@ -343,59 +352,28 @@ pageHeader =
         [ h1 [] [ text "Elmulator ", p [ class "lead" ] [ text "A 8080 Emulator written in Elm" ] ]
         ]
 
+
+
 -- TODO: Clean up screen rendering (magic constants, green scren handling, etc.)
-screen : EmulatorState -> Html Msg
-screen emulatorState =
-    let
-        width =
-            256
 
-        height =
-            224
 
-        renderedScreen =
-            toRenderable (readGraphicsMemory emulatorState)
-    in
-    Canvas.toHtml ( width, height )
+renderFrame : Array ByteValue -> Html Msg
+renderFrame videoRam =
+    Canvas.toHtml ( canvasWidth, canvasHeight )
         []
-        renderedScreen
+        (renderScreen videoRam)
 
-
-toRenderable : Maybe (Array ByteValue) -> List Renderable
-toRenderable maybeGraphicsMemory =
-    case maybeGraphicsMemory of
-        Just graphicsMemory ->
-            renderScreen (toPixels graphicsMemory)
-
-        Nothing ->
-             greenScreen
 
 greenScreenHtml : Html Msg
 greenScreenHtml =
-     let
-        width =
-            256
-
-        height =
-            224
-
-    in
-    Canvas.toHtml ( width, height )
+    Canvas.toHtml ( canvasWidth, canvasHeight )
         []
         greenScreen
 
+
 greenScreen : List Renderable
-greenScreen = [ shapes [ fill Color.green ] [ rect ( 0, 0 ) 256 224 ] ]
-
-
-readGraphicsMemory : EmulatorState -> Maybe (Array ByteValue)
-readGraphicsMemory emulatorState =
-    case emulatorState of
-        Valid machineState ->
-            Just (readMemorySlice 0x2400 0x3FFF machineState.memory)
-
-        Invalid _ _ ->
-            Nothing
+greenScreen =
+    [ shapes [ fill Color.green ] [ rect ( 0, 0 ) (toFloat canvasWidth) (toFloat canvasHeight) ] ]
 
 
 

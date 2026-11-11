@@ -1,24 +1,40 @@
 {
   "name": "elmulator",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "analyse": "npx elm-analyse -s -o",
-    "run:watch": "npx elm-live src/elm/Main.elm --open --dir=src --start-page=index.html -- --output=src/js/elmulator.js",
-    "test": "npx elm-test",
-    "test:ci": "mkdir -p test-reports && npx elm-test --report=junit > ./test-reports/junit.xml",
-    "test:watch": "npx elm-test --watch",
-    "build:dev": "npx elm make src/elm/Main.elm --output src/js/elmulator.js",
-    "build:prod": "npx elm make src/elm/Main.elm --output src/js/elmulator.js --optimize"
+  "version": "1.1.0",
+  "private": true,
+  "description": "An Intel 8080 emulator written in Elm",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
   },
-  "author": "",
-  "license": "",
+  "scripts": {
+    "analyse": "elm-analyse -s -o",
+    "build:dev": "elm make src/elm/Main.elm --output src/js/elmulator.js",
+    "build:prod": "elm make src/elm/Main.elm --output src/js/elmulator.js --optimize",
+    "format": "elm-format --yes src/elm tests",
+    "format:check": "elm-format --validate src/elm tests",
+    "gen:roms": "node scripts/generate-rom-data.mjs",
+    "run:watch": "elm-live src/elm/Main.elm --open --dir=src --start-page=index.html -- --output=src/js/elmulator.js",
+    "test": "elm-test",
+    "test:ci": "mkdir -p test-reports && elm-test --report=junit > ./test-reports/junit.xml",
+    "test:watch": "elm-test --watch",
+    "test:slow": "elm-test tests-slow/CpmSlowTest.elm"
+  },
   "devDependencies": {
-    "elm": "^0.19.0-no-deps",
-    "elm-analyse": "^0.16.4",
-    "elm-format": "^0.8.2",
-    "elm-live": "^4.0.1",
-    "elm-test": "^0.19.0-rev6"
+    "elm": "0.19.1-6",
+    "elm-analyse": "0.16.5",
+    "elm-format": "0.8.8",
+    "elm-live": "4.0.2",
+    "elm-test": "0.19.1-revision17"
+  },
+  "overrides": {
+    "minimist": ">=1.2.6",
+    "form-data": ">=2.5.6",
+    "qs": ">=6.16.1",
+    "tmp": ">=0.2.6",
+    "cross-spawn": ">=6.0.6",
+    "http-proxy": ">=1.18.1",
+    "body-parser": ">=1.20.9",
+    "ws": ">=7.5.11"
   }
 }

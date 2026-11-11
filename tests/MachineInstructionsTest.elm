@@ -120,7 +120,7 @@ all =
                                 , SetCpu (SetFlag (SetFlagAC False))
                                 , SetCpu (SetFlag (SetFlagZ False))
                                 , SetCpu (SetFlag (SetFlagS False))
-                                , SetCpu (SetFlag (SetFlagP False))
+                                , SetCpu (SetFlag (SetFlagP True))
                                 ]
                     in
                     Expect.equal expectedMachineStateDiff (MachineInstructions.inr_b machineState)
@@ -140,7 +140,7 @@ all =
                                 , SetCpu (SetFlag (SetFlagAC True))
                                 , SetCpu (SetFlag (SetFlagZ False))
                                 , SetCpu (SetFlag (SetFlagS False))
-                                , SetCpu (SetFlag (SetFlagP True))
+                                , SetCpu (SetFlag (SetFlagP False))
                                 ]
                     in
                     Expect.equal expectedMachineStateDiff (MachineInstructions.inr_b machineState)
@@ -154,7 +154,8 @@ all =
                                 [ SetCpu (SetRegisterB 0xFF)
                                 , SetCpu (SetFlag (SetFlagZ False))
                                 , SetCpu (SetFlag (SetFlagS True))
-                                , SetCpu (SetFlag (SetFlagP False))
+                                , SetCpu (SetFlag (SetFlagP True))
+                                , SetCpu (SetFlag (SetFlagAC False))
                                 , SetCpu (SetPC 0x01)
                                 ]
                     in
@@ -174,6 +175,7 @@ all =
                                 , SetCpu (SetFlag (SetFlagZ True))
                                 , SetCpu (SetFlag (SetFlagS False))
                                 , SetCpu (SetFlag (SetFlagP True))
+                                , SetCpu (SetFlag (SetFlagAC True))
                                 , SetCpu (SetPC 0x01)
                                 ]
                     in
@@ -296,7 +298,8 @@ all =
                                 [ SetCpu (SetRegisterC 0xFF)
                                 , SetCpu (SetFlag (SetFlagZ False))
                                 , SetCpu (SetFlag (SetFlagS True))
-                                , SetCpu (SetFlag (SetFlagP False))
+                                , SetCpu (SetFlag (SetFlagP True))
+                                , SetCpu (SetFlag (SetFlagAC False))
                                 , SetCpu (SetPC 0x01)
                                 ]
                     in
@@ -316,6 +319,7 @@ all =
                                 , SetCpu (SetFlag (SetFlagZ True))
                                 , SetCpu (SetFlag (SetFlagS False))
                                 , SetCpu (SetFlag (SetFlagP True))
+                                , SetCpu (SetFlag (SetFlagAC True))
                                 , SetCpu (SetPC 0x01)
                                 ]
                     in
@@ -771,6 +775,7 @@ all =
                                 , SetCpu (SetFlag (SetFlagZ False))
                                 , SetCpu (SetFlag (SetFlagS False))
                                 , SetCpu (SetFlag (SetFlagP False))
+                                , SetCpu (SetFlag (SetFlagAC True))
                                 , SetCpu (SetPC 0x01)
                                 ]
                     in
@@ -785,14 +790,15 @@ all =
                             0x02
 
                         machineState =
-                            { allZeroMachineState | cpuState = CpuState 0 0 0 0 0 h l 0 0 allFalseConditionCodes False 0, memory = fromList (range 0 0x0102) }
+                            { allZeroMachineState | cpuState = CpuState 0 0 0 0 0 h l 0 0 allFalseConditionCodes False 0, memory = fromList (List.map (modBy 256) (range 0 0x0102)) }
 
                         expectedMachineStateDiff =
                             Events
-                                [ SetMemory 0x0102 0x0101
+                                [ SetMemory 0x0102 0x01
                                 , SetCpu (SetFlag (SetFlagZ False))
                                 , SetCpu (SetFlag (SetFlagS False))
                                 , SetCpu (SetFlag (SetFlagP False))
+                                , SetCpu (SetFlag (SetFlagAC True))
                                 , SetCpu (SetPC 0x01)
                                 ]
                     in
@@ -863,7 +869,7 @@ all =
                                 , SetCpu (SetFlag (SetFlagAC False))
                                 , SetCpu (SetFlag (SetFlagZ False))
                                 , SetCpu (SetFlag (SetFlagS False))
-                                , SetCpu (SetFlag (SetFlagP True))
+                                , SetCpu (SetFlag (SetFlagP False))
                                 ]
                     in
                     Expect.equal expectedMachineStateDiff (MachineInstructions.inr_a machineState)
@@ -881,6 +887,7 @@ all =
                                 , SetCpu (SetFlag (SetFlagZ True))
                                 , SetCpu (SetFlag (SetFlagS False))
                                 , SetCpu (SetFlag (SetFlagP True))
+                                , SetCpu (SetFlag (SetFlagAC True))
                                 , SetCpu (SetPC 1)
                                 ]
                     in
@@ -896,7 +903,8 @@ all =
                                 [ SetCpu (SetRegisterA 255)
                                 , SetCpu (SetFlag (SetFlagZ False))
                                 , SetCpu (SetFlag (SetFlagS True))
-                                , SetCpu (SetFlag (SetFlagP False))
+                                , SetCpu (SetFlag (SetFlagP True))
+                                , SetCpu (SetFlag (SetFlagAC False))
                                 , SetCpu (SetPC 1)
                                 ]
                     in
@@ -913,6 +921,7 @@ all =
                                 , SetCpu (SetFlag (SetFlagZ False))
                                 , SetCpu (SetFlag (SetFlagS False))
                                 , SetCpu (SetFlag (SetFlagP False))
+                                , SetCpu (SetFlag (SetFlagAC True))
                                 , SetCpu (SetPC 1)
                                 ]
                     in
@@ -1404,7 +1413,7 @@ all =
                                 , SetCpu (SetFlag (SetFlagAC True))
                                 , SetCpu (SetFlag (SetFlagZ False))
                                 , SetCpu (SetFlag (SetFlagS True))
-                                , SetCpu (SetFlag (SetFlagP True))
+                                , SetCpu (SetFlag (SetFlagP False))
                                 ]
                     in
                     Expect.equal expectedMachineStateDiff (MachineInstructions.add_b machineState)
@@ -1427,9 +1436,10 @@ all =
                                 [ SetCpu (SetRegisterA 5)
                                 , SetCpu (SetPC 0x01)
                                 , SetCpu (SetFlag (SetFlagCY False))
+                                , SetCpu (SetFlag (SetFlagAC False))
                                 , SetCpu (SetFlag (SetFlagZ False))
                                 , SetCpu (SetFlag (SetFlagS False))
-                                , SetCpu (SetFlag (SetFlagP False))
+                                , SetCpu (SetFlag (SetFlagP True))
                                 ]
                     in
                     Expect.equal expectedMachineStateDiff (MachineInstructions.ana_b machineState)
@@ -1450,9 +1460,10 @@ all =
                                 [ SetCpu (SetRegisterA 128)
                                 , SetCpu (SetPC 0x01)
                                 , SetCpu (SetFlag (SetFlagCY False))
+                                , SetCpu (SetFlag (SetFlagAC False))
                                 , SetCpu (SetFlag (SetFlagZ False))
                                 , SetCpu (SetFlag (SetFlagS True))
-                                , SetCpu (SetFlag (SetFlagP True))
+                                , SetCpu (SetFlag (SetFlagP False))
                                 ]
                     in
                     Expect.equal expectedMachineStateDiff (MachineInstructions.ana_b machineState)
@@ -1472,9 +1483,10 @@ all =
                                 [ SetCpu (SetRegisterA 0x80)
                                 , SetCpu (SetPC 0x01)
                                 , SetCpu (SetFlag (SetFlagCY False))
+                                , SetCpu (SetFlag (SetFlagAC False))
                                 , SetCpu (SetFlag (SetFlagZ False))
                                 , SetCpu (SetFlag (SetFlagS True))
-                                , SetCpu (SetFlag (SetFlagP True))
+                                , SetCpu (SetFlag (SetFlagP False))
                                 ]
                     in
                     Expect.equal expectedMachineStateDiff (MachineInstructions.ana_a machineState)
@@ -1492,6 +1504,7 @@ all =
                                 [ SetCpu (SetRegisterA 0x00)
                                 , SetCpu (SetPC 0x01)
                                 , SetCpu (SetFlag (SetFlagCY False))
+                                , SetCpu (SetFlag (SetFlagAC False))
                                 , SetCpu (SetFlag (SetFlagZ True))
                                 , SetCpu (SetFlag (SetFlagS False))
                                 , SetCpu (SetFlag (SetFlagP True))
@@ -1520,7 +1533,7 @@ all =
                                 , SetCpu (SetFlag (SetFlagAC False))
                                 , SetCpu (SetFlag (SetFlagZ False))
                                 , SetCpu (SetFlag (SetFlagS False))
-                                , SetCpu (SetFlag (SetFlagP False))
+                                , SetCpu (SetFlag (SetFlagP True))
                                 ]
                     in
                     Expect.equal expectedMachineStateDiff (MachineInstructions.xra_b machineState)
@@ -1603,6 +1616,7 @@ all =
                             Events
                                 [ SetCpu (SetSP 2)
                                 , SetCpu (SetPC 0x0100)
+                                , SetCpu (AddCycles 6)
                                 ]
                     in
                     Expect.equal expectedMachineStateDiff (MachineInstructions.rnz machineState)
@@ -1652,6 +1666,7 @@ all =
                                 , SetMemory 0x00 0x59
                                 , SetCpu (SetSP 0x00)
                                 , SetCpu (SetPC 0x0A)
+                                , SetCpu (AddCycles 6)
                                 ]
                     in
                     Expect.equal expectedMachineStateDiff (MachineInstructions.cnz 10 0 machineState)
@@ -1741,7 +1756,7 @@ all =
                                 , SetCpu (SetFlag (SetFlagAC False))
                                 , SetCpu (SetFlag (SetFlagZ False))
                                 , SetCpu (SetFlag (SetFlagS False))
-                                , SetCpu (SetFlag (SetFlagP False))
+                                , SetCpu (SetFlag (SetFlagP True))
                                 ]
                     in
                     Expect.equal expectedMachineStateDiff (MachineInstructions.ora_m machineState)
@@ -1818,8 +1833,9 @@ all =
                                 [ SetCpu (SetRegisterA 0x02)
                                 , SetCpu (SetFlag (SetFlagZ False))
                                 , SetCpu (SetFlag (SetFlagS False))
-                                , SetCpu (SetFlag (SetFlagP True))
+                                , SetCpu (SetFlag (SetFlagP False))
                                 , SetCpu (SetFlag (SetFlagCY False))
+                                , SetCpu (SetFlag (SetFlagAC False))
                                 , SetCpu (SetPC 0x02)
                                 ]
                     in
@@ -1851,6 +1867,7 @@ all =
                             Events
                                 [ SetCpu (SetSP 0x03)
                                 , SetCpu (SetPC 0x0201)
+                                , SetCpu (AddCycles 6)
                                 ]
                     in
                     Expect.equal expectedMachineStateDiff (MachineInstructions.rz machineState)
@@ -1930,6 +1947,7 @@ all =
                                 , SetMemory 8 0x05
                                 , SetCpu (SetSP 8)
                                 , SetCpu (SetPC 5)
+                                , SetCpu (AddCycles 6)
                                 ]
                     in
                     Expect.equal expectedMachineStateDiff (MachineInstructions.cz 5 0 machineState)
@@ -1984,6 +2002,7 @@ all =
                             Events
                                 [ SetCpu (SetSP 7)
                                 , SetCpu (SetPC 0x0605)
+                                , SetCpu (AddCycles 6)
                                 ]
                     in
                     Expect.equal expectedMachineStateDiff (MachineInstructions.rnc machineState)
@@ -2052,6 +2071,7 @@ all =
                                 , SetMemory 8 13
                                 , SetCpu (SetSP 8)
                                 , SetCpu (SetPC 0x0A01)
+                                , SetCpu (AddCycles 6)
                                 ]
                     in
                     Expect.equal expectedMachineStateDiff (MachineInstructions.cnc 0x01 0x0A machineState)
@@ -2105,6 +2125,7 @@ all =
                             Events
                                 [ SetCpu (SetSP 7)
                                 , SetCpu (SetPC 0x0605)
+                                , SetCpu (AddCycles 6)
                                 ]
                     in
                     Expect.equal expectedMachineStateDiff (MachineInstructions.rc machineState)

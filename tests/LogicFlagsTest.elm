@@ -36,7 +36,7 @@ all =
                             , setFlagAC False
                             , setFlagZ False
                             , setFlagS True
-                            , setFlagP False
+                            , setFlagP True
                             ]
                     in
                     Expect.equal (logic_flags_a newA) expectedMachineStateDiffEvents
@@ -49,7 +49,7 @@ all =
                         expectedMachineStateDiffEvents =
                             [ setFlagCY False
                             , setFlagAC False
-                            , setFlagZ False
+                            , setFlagZ True
                             , setFlagS False
                             , setFlagP True
                             ]
@@ -79,7 +79,7 @@ all =
                         expectedEvents =
                             [ setFlagZ False
                             , setFlagS False
-                            , setFlagP True
+                            , setFlagP False
                             ]
                     in
                     Expect.equal expectedEvents (flags_ZSP value)

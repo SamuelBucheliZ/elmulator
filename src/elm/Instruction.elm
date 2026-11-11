@@ -1,7 +1,7 @@
 module Instruction exposing (DisassembledProgram, Instruction, instructionToString)
 
 import EmulatorState exposing (AddressValue, ByteValue)
-import Hex as Hex
+import Hex
 import OpCode exposing (OpCode)
 
 
