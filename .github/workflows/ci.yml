@@ -61,13 +61,16 @@ jobs:
       - run: npm ci
       - run: npm run build:prod
       # the site is the emulator at the root, and the slides under /slides (the project path is /elmulator/)
+      # the slides also come as a PDF (elmulator-slides.pdf), and 404.html serves the deck for deep links such as /slides/4
       - name: Assemble the site
         run: |
           mkdir -p _site
           cp -r src/. _site/
           cd slides
           npm ci
-          npx slidev build --base /elmulator/slides/
+          npx playwright-chromium install --with-deps chromium
+          npm run build -- --base /elmulator/slides/
+          npm run pdf
           cd ..
           cp -r slides/dist _site/slides
       - uses: actions/upload-pages-artifact@v3

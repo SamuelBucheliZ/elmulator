@@ -5,11 +5,14 @@
   "scripts": {
     "dev": "slidev --open",
     "build": "slidev build",
-    "export": "slidev export"
+    "export": "slidev export",
+    "pdf": "slidev export --output dist/elmulator-slides.pdf",
+    "postbuild": "cp dist/index.html dist/404.html"
   },
   "devDependencies": {
     "@slidev/cli": "53.0.0",
     "@slidev/theme-default": "0.25.0",
+    "playwright-chromium": "1.64.1",
     "vue": "^3.5.0"
   }
 }

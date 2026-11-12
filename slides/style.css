@@ -74,6 +74,16 @@ pre.shiki span {
   padding: 0.2rem 0.6rem !important;
 }
 
+/* A dense table: eight rows of explanations on one slide. */
+.dense table {
+  font-size: 0.7rem;
+  line-height: 1.25;
+}
+.dense td,
+.dense th {
+  padding: 0.18rem 0.5rem !important;
+}
+
 /* Register diagram, built from boxes so that it lays out in a row. */
 .reg-diagram {
   display: flex;
@@ -150,3 +160,4 @@ pre.shiki span {
 .pixel-column .on {
   background: #1d2330;
 }
+
