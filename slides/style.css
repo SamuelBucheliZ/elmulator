@@ -1,0 +1,152 @@
+/* Light slides; code blocks stay dark, where the syntax highlighting reads best. */
+
+.slidev-layout {
+  background: #fbfbfd;
+  color: #1d2330;
+}
+
+/* Shiki emits both colour sets; use the dark one for code, even on a light slide. */
+pre.shiki {
+  background: #1e1e2e !important;
+  border-radius: 6px;
+  padding: 0.6em 0.9em !important;
+}
+pre.shiki span {
+  color: var(--shiki-dark) !important;
+}
+
+/* Smaller code next to diagrams; long lines wrap instead of running off the slide. */
+.code-small pre,
+.code-small code {
+  font-size: 0.72rem !important;
+  line-height: 1.35 !important;
+}
+.code-small pre.shiki,
+.code-small pre.shiki .line,
+.code-small pre.shiki code {
+  white-space: pre-wrap !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* Diagrams: fill the width of their column, but never spill over the slide. */
+.diagram {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.diagram > * {
+  width: 100% !important;
+}
+.diagram svg {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: 56vh !important;
+}
+.diagram-wide svg {
+  max-height: 62vh !important;
+}
+/* A full-width flow above the code of a walk-through step. */
+.diagram-row {
+  margin-bottom: 0.6rem;
+}
+.diagram-row svg {
+  max-height: 24vh !important;
+}
+.diagram-row-small svg {
+  max-height: 17vh !important;
+}
+/* The Elm Architecture picture is the one diagram that should use the whole slide. */
+.diagram-xl svg {
+  max-height: 70vh !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* The glossary: twelve rows on one slide. */
+.glossary table {
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+.glossary td,
+.glossary th {
+  padding: 0.2rem 0.6rem !important;
+}
+
+/* Register diagram, built from boxes so that it lays out in a row. */
+.reg-diagram {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.reg-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.reg-box {
+  border: 2px solid #4b5bd6;
+  background: #ffffff;
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  text-align: center;
+  min-width: 6.5rem;
+  display: flex;
+  flex-direction: column;
+}
+.reg-box b {
+  font-size: 1.1rem;
+}
+.reg-box span {
+  font-size: 0.7rem;
+  opacity: 0.75;
+}
+.reg-main {
+  border-color: #c2410c;
+}
+.reg-flags {
+  border-color: #047857;
+}
+.reg-alu {
+  border: 2px solid #6b7280;
+  border-radius: 999px;
+  padding: 0.35rem 1.2rem;
+  background: #eef0f5;
+}
+.reg-arrow,
+.reg-note {
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+.reg-note {
+  margin-top: 0.3rem;
+  font-style: italic;
+}
+
+.credit {
+  font-size: 0.65rem;
+  opacity: 0.65;
+  margin-top: 0.4em;
+}
+
+/* A byte as eight pixels: one column of the screen. */
+.pixel-column {
+  display: inline-flex;
+  flex-direction: column;
+  border: 2px solid #1d2330;
+}
+.pixel-column div {
+  width: 46px;
+  height: 22px;
+  border-bottom: 1px solid #c9ced8;
+}
+.pixel-column div:last-child {
+  border-bottom: none;
+}
+.pixel-column .on {
+  background: #1d2330;
+}
