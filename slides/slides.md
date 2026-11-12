@@ -881,7 +881,229 @@ Our tests and the ROM tests catch most such slips, but the types could do more.
 layout: section
 ---
 
+# 3c · Functional idioms in the code
+
+Maybe, decoders, tasks, folds and partial application
+
+---
+
+# Maybe: absence as a value
+
+```elm
+-- src/elm/Cabinet.elm
+gameKey : Cabinet -> String -> Maybe GameKey
+gameKey cabinet key =
+    cabinet.keys
+        |> List.filter (\( keyName, _ ) -> keyName == key)
+        |> List.head
+        |> Maybe.map Tuple.second
+```
+
+<div class="text-sm opacity-80 pt-2">
+A key that is not in the map gives <code>Nothing</code>. <code>Maybe.map</code> runs only if there is a value, so there is no <code>null</code> check to forget.
+</div>
+
+---
+
+# Maybe.andThen: stop at the first failure
+
+```elm
+-- src/elm/InstructionDisassembler.elm
+disassembleOneInstruction state =
+    List.head state.remainingBytes
+        |> Maybe.andThen getOpCodeFromTable
+        |> Maybe.map (\opCode -> applyOpCodeToDisassemblyState opCode state)
+```
+
+<div class="text-sm opacity-80 pt-2">
+
+- No bytes left: <code>List.head</code> gives <code>Nothing</code>, and the chain stops
+- An unknown opcode: <code>getOpCodeFromTable</code> gives <code>Nothing</code>, and the chain stops
+- Only when both succeed does the last step run
+
+<code>andThen</code> is the step that makes a chain of possibly failing steps read like straight-line code.
+
+</div>
+
+---
+
+# Monads, in one slide
+
+A **monad** is a type with two operations: put a plain value into it (`succeed`, `Just`), and chain a step that itself returns that type (`andThen`). The value carries a context: it may be missing, it may fail, it may still be waiting for something.
+
+| Type | The context | Where Elmulator uses it |
+| --- | --- | --- |
+| `Maybe` | the value may be missing | the key map, the opcode lookup |
+| `Decoder` | the parse may fail | keyboard events, the ROM file |
+| `Task` | an effect that will produce a value | reading the selected ROM file |
+
+<div class="text-sm opacity-80 pt-2">
+Elm has no <code>do</code> notation, so a chain is written with <code>|></code> and <code>andThen</code>. <code>Cmd</code> is not one of these: you cannot chain on a command, because it is a description the runtime runs once.
+</div>
+
+---
+
+# Decoders: parsing that can fail, chained
+
+```elm
+-- src/elm/UI/KeyDecoder.elm (excerpt)
+keyDecoderDown : Decode.Decoder Msg
+keyDecoderDown =
+    keyDecoder
+        |> Decode.andThen
+            (\key ->
+                case key of
+                    "p" ->
+                        Decode.succeed TogglePause
+                    ...
+                    _ ->
+                        case gameKey spaceInvaders key of
+                            Just gameKeyPressed ->
+                                Decode.succeed (KeyDown gameKeyPressed)
+                            Nothing ->
+                                Decode.fail "Pressed key is not an Elmulator shortcut"
+            )
+```
+
+<div class="text-sm opacity-80 pt-2">
+The decoder reads the key of the browser event, then decides which message to produce, or fails. A failed decoder means "ignore this event", so the browser's other keys need no special case in <code>update</code>.
+</div>
+
+---
+
+# Decoders in a loop: reading the ROM
+
+```elm
+-- src/elm/FileDecoder.elm
+listStep decoder ( n, xs ) =
+    if n <= 0 then
+        Decode.succeed (Decode.Done xs)
+    else
+        Decode.map (\x -> Decode.Loop ( n - 1, xs ++ [ x ] )) decoder
+```
+
+<div class="text-sm opacity-80 pt-2">
+
+<code>Decode.loop</code> is recursion written as data: each step says <code>Loop</code> (go again) or <code>Done</code>. The loop reads one byte per step.
+
+Honest note: <code>xs ++ [ x ]</code> copies the list at every step. For an 8 KB ROM that is acceptable; for a larger file we would cons onto the list and reverse it at the end.
+
+</div>
+
+---
+
+# Tasks: effects as values, too
+
+```elm
+-- src/elm/Main.elm
+RomSelected file ->
+    ( model
+    , Task.perform RomLoaded (File.toBytes file)
+    )
+```
+
+<div class="text-sm opacity-80 pt-2">
+
+<code>File.toBytes file</code> is a **task**: a description of reading the file. <code>Task.perform</code> turns it into a command. <code>update</code> returns that command, the Elm runtime runs it, and the result comes back as the message <code>RomLoaded</code>.
+
+Our core never does input or output itself. Every effect leaves the core as a value first.
+
+</div>
+
+---
+
+# Folds as state machines: video RAM to lines
+
+```elm
+-- src/elm/Graphics.elm
+type alias RowScan =
+    { runStart : Int      -- first lit pixel of the open run, or -1
+    , runs : List Run
+    }
+
+rowRuns videoRam row =
+    List.foldl (scanByte videoRam row rowOffset) emptyScan (List.range 0 (bytesPerRow - 1))
+        |> closeRunAt row (pixelsPerRow - 1)
+```
+
+<div class="text-sm opacity-80 pt-2">
+The scan state is a record. Each byte of a row updates it, and the fold returns the final state. The runs are built in one pass, so the cost grows with the size of the screen, not with its square.
+</div>
+
+---
+
+# Partial application: functions with some arguments already given
+
+```elm
+-- src/elm/OpCodeTable.elm
+(OneByte (aluRegister row (operandFromCode low)))
+```
+
+```elm
+-- src/elm/MachineInstructions.elm
+aluRegister : Int -> Operand -> MachineState -> MachineStateDiff
+```
+
+<div class="text-sm opacity-80 pt-2">
+
+<code>aluRegister row operand</code> is a function that still waits for the machine state. The table stores these partly applied functions, and the CPU supplies the state when it runs an instruction. The same shape appears in <code>ImplTwoBytes = ByteValue -> (MachineState -> MachineStateDiff)</code>.
+
+</div>
+
+---
+
+# A memory provider: a function that answers when asked
+
+```elm
+-- src/elm/Memory.elm
+createMemoryProvider address offset memory =
+    let
+        readValue =
+            Array.get (modBy 0x00010000 (address + offset)) memory
+    in
+    \_ ->
+        case readValue of
+            Just value -> Valid value
+            Nothing -> Invalid ("Illegal memory access occurred at ...")
+```
+
+```elm
+-- src/elm/OpCode.elm
+TwoBytes implTwoBytes ->
+    let
+        firstArg = firstValueProvider ()
+```
+
+<div class="text-sm opacity-80 pt-2">
+The implementation decides whether to ask for the operand byte. A missing byte becomes <code>Invalid</code>, not an exception. Note: Elm evaluates eagerly, so the array lookup happens when the provider is created; only the answer is wrapped and handed out on request.
+</div>
+
+---
+
+# Our own Result, and the standard one
+
+```elm
+-- src/elm/Memory.elm
+type MemoryAccessResult
+    = Valid ByteValue
+    | Invalid String
+```
+
+<div class="text-sm opacity-80 pt-2">
+
+Elm's standard <code>Result error value</code> has the same two cases (<code>Ok</code> and <code>Err</code>), and the same helpers: <code>Result.map</code>, <code>Result.andThen</code>, <code>Result.withDefault</code>.
+
+We wrote our own type first. The standard one would give us those helpers for free, so the unwrapping code in <code>OpCode.elm</code> could be chained rather than matched by hand. We keep the names <code>Valid</code> and <code>Invalid</code> because the emulator's own state type uses them too.
+
+</div>
+
+---
+layout: section
+---
+
 # 4 · Elm
+
+A typed, pure language for web front ends
 
 A typed, pure language for web front ends
 
@@ -1309,6 +1531,49 @@ Right ->
 </div>
 
 </div>
+
+---
+
+# Summary: what we covered
+
+- **Emulation**: an interpreter reproduces the state, the instructions and the time of the guest
+- **The 8080**: registers, opcodes in families, ports, interrupts, a 2 MHz clock, memory-mapped video
+- **Functional programming**: pure functions, immutable records, effects as data, errors as values
+- **Modelling**: concepts as types, compared with strings and bits; where the types are still weak
+- **Idioms**: `Maybe`, decoders and tasks as chains that can fail or wait; folds as state machines; partial application
+- **Elm**: messages, `update`, `view` and subscriptions, with the model in three parts
+- **The walk-through**: a ROM load, one instruction, the clock, the screen and a key press
+
+---
+
+# Lessons learned: the bugs we hit
+
+<div class="dense">
+
+| What we saw | Cause | What fixed it |
+| --- | --- | --- |
+| The aliens did not move, and the shots did not fire | interrupts always sent RST 2; the game re-enables interrupts in its RST 1 handler | alternate RST 1 and RST 2 every 1/120 s |
+| Flags were wrong: parity, decimal adjust, auxiliary carry | mistakes in the flag rules of several instructions | the 8080 ROM tests, which check the results of each instruction group |
+| "1x" speed ran at about 50,000 instructions per second | the clock counted instructions, not cycles | count cycles; turn elapsed time into owed cycles |
+| Drawing the screen was slow | a list appended in a loop, which is quadratic | one pass over video RAM that builds runs |
+| The CPU test ROM overflowed the stack when loaded | a hex parser that recursed without a tail call | an accumulator, so the recursion is a loop |
+| Elm 0.19.0 generated wrong code for `Bitwise.and … /= 0` | a bug in the Elm 0.19.0 optimizer | write `== mask` or `> 0`; upgraded to Elm 0.19.1 |
+| Arrow keys and space scrolled the page | the browser's own actions | only the six game keys are used |
+| A refactor broke the timing loop of CPUTEST | a change to the instruction table | the slow ROM suite caught it; re-run it after every step |
+
+</div>
+
+---
+
+# Take-aways for engineers
+
+1. **Find an oracle before you write code.** The 8080 test ROMs say what each result should be, and they caught the flag bugs that our own reading had let through.
+2. **Keep the core pure.** Most tests run without a browser, in about a second.
+3. **Make illegal states unrepresentable, and know where the types are weak.** Aliases and custom result types give less than the standard ones.
+4. **Pass time and input in as values.** Then timing is testable, and deterministic.
+5. **Refactor under a safety net.** The slow suite caught what the fast tests did not.
+6. **Use the standard types first:** `Maybe`, `Result`, decoders, tasks. Write your own only when they do not fit.
+7. **The original hardware is the specification.** Read the reference, and trace what the game really does.
 
 ---
 layout: center
