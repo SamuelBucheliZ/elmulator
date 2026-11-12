@@ -12,13 +12,13 @@ mdc: true
 An Intel 8080 emulator written in Elm 0.19.1
 
 <div class="pt-8 text-sm opacity-70">
-Emulation · the 8080 · functional programming · Elm · a walk-through of the code
+Emulation · the 8080 · functional programming and modelling · Elm · a walk-through of the code
 </div>
 
 <!--
 Elmulator emulates the Intel 8080 processor, the CPU of Space Invaders (1978).
-We will go from the general idea of emulation, to the chip, to the language,
-and finish with the code of this project.
+We will go from the general idea of emulation, to the chip, to the language and
+the way we model it, and finish with the code of this project.
 -->
 
 ---
@@ -31,7 +31,7 @@ and finish with the code of this project.
 
 1. **Emulation**: what it is, and what we must reproduce
 2. **The Intel 8080**: registers, instructions, ports, interrupts
-3. **Functional programming**: values, effects as data, errors as values
+3. **Functional programming and modelling**: values, effects as data, and types that rule out wrong programs
 4. **Elm**: the language and its architecture
 5. **Walk-through**: from a ROM file to pixels on the screen
 
@@ -237,7 +237,7 @@ layout: section
 
 # 3 · Functional programming
 
-Values, effects as data, errors as values
+Values, effects as data, and types that rule out wrong programs
 
 ---
 
@@ -333,6 +333,198 @@ Elm has no loops, so iteration is a function that calls itself on a smaller prob
 layout: section
 ---
 
+# 3 · Modelling with types
+
+Make illegal states unrepresentable
+
+---
+
+# The idea
+
+If the types describe the machine correctly, many mistakes cannot be written at all.
+
+- Give every **concept** a type: a register, an operand, a button, an event
+- Make the **combinations** that do not exist impossible to express
+- Let the compiler check that every case is handled
+- Keep the **effects** as data, so the logic stays testable
+
+<div class="text-sm opacity-70 pt-2">
+The compiler checks the model. Tests check what the compiler cannot: the numbers, the timing and the behaviour of the chip.
+</div>
+
+---
+
+# Concept: a register is one of seven names
+
+The 8080 encodes operands in a 3-bit field: `0`=B, `1`=C … `6`=(HL), `7`=A.
+We convert the bits once, into a type:
+
+```elm
+type Register
+    = B | C | D | E | H | L | A
+
+type Operand
+    = Reg Register
+    | AtHL          -- the byte at the address in HL
+```
+
+```elm
+operandFromCode : Int -> Operand
+```
+
+<div class="text-sm opacity-70 pt-2">
+After the conversion, a number from 0 to 7 never reaches an instruction. An instruction that takes an `Operand` cannot be handed a register pair, and the `AtHL` case cannot be forgotten: the `case` must mention it.
+</div>
+
+---
+
+# Concept: a register pair is not a register
+
+```elm
+type Pair
+    = PairBC
+    | PairDE
+    | PairHL
+    | PairSP        -- not a register, but it takes part in pair operations
+```
+
+- `INX`, `DCX`, `LXI` and `DAD` take a `Pair`, not an `Operand`
+- SP is in the `Pair` type, so the stack pointer takes part in `DAD SP` without a special case in every instruction
+- The 2-bit field is converted once, by `pairFromCode`
+
+---
+
+# Concept: an opcode's length is its type
+
+```elm
+type OpCodeSpec
+    = OneByte ImplOneByte
+    | TwoBytes ImplTwoBytes
+    | ThreeBytes ImplThreeBytes
+```
+
+Each table entry says how many bytes the instruction takes, and the implementation has the
+matching shape:
+
+- A one-byte instruction (`MOV A,B`) is a `OneByte`, with no operand bytes
+- A two-byte instruction (`ADI D8`) is a `TwoBytes`, and its implementation takes one operand byte
+- An implementation for `TwoBytes` cannot be put into a `OneByte` slot
+
+`getOpCodeLength` reads the length from the constructor, so the length is written only once.
+
+---
+
+# Concept: a closed set of effects
+
+Everything an instruction can do is one of these:
+
+```elm
+type MachineStateDiffEvent
+    = SetCpu SetCpuStateEvent
+    | SetMemory AddressValue ByteValue
+    | SetShiftRegister SetShiftRegisterEvent
+    | SetPort SetPortEvent
+```
+
+```elm
+applyEvent : MachineStateDiffEvent -> MachineState -> MachineState
+applyEvent event machineState =
+    case event of
+        SetMemory address value -> ...
+        SetCpu setCpuStateEvent -> ...
+```
+
+<div class="text-sm opacity-70 pt-2">
+Add a new kind of effect and the compiler lists every `case` that has no catch-all branch and must handle it. The same holds for the messages of the page (`UI/Msg.elm`).
+</div>
+
+---
+
+# Concept: a button is a value, not a key
+
+A keyboard key becomes a game button in one place, through a value we can test:
+
+```elm
+type GameKey = Left | Right | Fire | Coin | Start1 | Start2
+
+gameKey : Cabinet -> String -> Maybe GameKey
+```
+
+- `Cabinet.spaceInvaders` is the key map: `"a"` → `Left`, `"d"` → `Right`, …
+- `IO.keyEvent` is the only place that knows which bit of port 1 a button drives
+- An unknown key gives `Nothing`, so the browser's own keys (space, arrows) never reach the game
+
+```elm
+test "keys that are not game buttons have no meaning" ...
+```
+
+---
+
+# Concept: time is an input
+
+The emulated clock is not read inside the core. It is passed in:
+
+```elm
+runCycles : Int -> Int -> MachineState -> ( EmulatorState, Int )
+--          target  due   state          new state, new due cycle
+```
+
+- The caller decides how far to run, and keeps the next interrupt cycle
+- The function is pure: the same inputs always give the same cycles
+- Tests can run an exact number of cycles, without waiting for a browser timer
+
+---
+
+# Concept: the model is made of parts
+
+```elm
+type alias Model =
+    { machine : Machine     -- the ROM and the emulated 8080
+    , clock : Clock         -- speed, pause, emulated time
+    , ui : Ui               -- what is shown: step box, code view, screen
+    }
+```
+
+- The page cannot change the CPU except through `update`, with a message
+- The clock can be tested without the screen, and the screen without the machine
+- A cache (the last rendered frame) lives in the UI part, where it belongs
+
+---
+
+# What the types do not catch yet
+
+Honest version: `ByteValue` and `AddressValue` are **aliases** for `Int`.
+
+```elm
+type alias ByteValue =
+    Int
+
+type alias AddressValue =
+    Int
+```
+
+So the compiler accepts an address where a byte is expected. Our tests and the ROM tests catch
+most such slips, but the types could do more.
+
+A possible next step: **opaque types** for byte and address, created by smart constructors that
+wrap and check the value, so the two cannot be mixed without an explicit conversion. This is
+not in the code yet.
+
+---
+
+# Summary: how we modelled the emulator
+
+1. **Name the concept** (a register, a button, an effect)
+2. **Give it a type**, and convert from raw numbers once, at the edge
+3. **Make the impossible combinations impossible** (operand vs pair, opcode length)
+4. **Describe effects as data**, and apply them in one place
+5. **Pass time and input in**, so the core stays pure
+6. **Test the functions**, not the browser; let the compiler check the rest
+
+---
+layout: section
+---
+
 # 4 · Elm
 
 A typed, pure language for web front ends
@@ -389,24 +581,7 @@ type Msg
     -- ...
 ```
 
-A new feature usually means a new constructor here, and the compiler then shows every place that must handle it.
-
----
-
-# The model is split by concern
-
-Elmulator's `Main.Model` is three records:
-
-```elm
-type alias Model =
-    { machine : Machine     -- the ROM and the emulated 8080
-    , clock : Clock         -- speed, pause, emulated time
-    , ui : Ui               -- what is shown: step box, code view, screen
-    }
-```
-
-The machine knows nothing about the page. The clock knows nothing about the screen.
-Each part can be tested by itself.
+A new feature usually means a new constructor here, and the compiler then shows every `case` that must handle it.
 
 ---
 
@@ -424,16 +599,6 @@ subscriptions _ =
 ```
 
 A timer, a keyboard event and a file load are all just messages. `update` treats them the same way.
-
----
-
-# Elm, from our experience
-
-- **Upgrading** from 0.19.0 to 0.19.1 was mostly mechanical, and it fixed a real optimizer bug:
-  `Bitwise.and mask x /= 0` compiled to a bare expression, so we wrote `== mask` or `> 0` instead
-- **Stack depth**: a non-tail-recursive hex parser overflowed on the 8080 test ROM; an accumulator fixed it
-- **Canvas performance**: appending lists in a loop was quadratic; a single pass over the rows is linear
-- **Tests** are plain Elm: `elm-test` runs the same code the browser does
 
 ---
 layout: section
@@ -541,35 +706,20 @@ The keys are `A` `D` `S` `C` `1` `2`. Arrow keys, space and enter are not used, 
 A key that is typed into a text field is ignored.
 
 ---
-
-# How we know it works
-
-- **Unit tests** (167): instruction behaviour, instruction families, graphics, controls, key decoding, the cabinet, emulation speed
-- **ROM tests**: the Intel 8080 diagnostics (TST8080, 8080PRE, CPUTEST, 8080EXM) run in a CP/M shim, checking output, instruction counts and cycle counts
-- **Slow suite** (`npm run test:slow`): CPUTEST with exact counts, about 7 minutes
-- **Format and build** checks in CI on every push
-
-The ROM tests caught the flag bugs we had (parity, the decimal adjust, the auxiliary carry) and keep them from coming back.
-
----
-
-# Where to go next
-
-- **Cabinet profiles**: Space Invaders is one value; the video layout, interrupts and buttons would go into it, so another 8080 machine is another value
-- **Stepping back**: the state is a value, so a history of states is a list
-- **Smaller effect type**: fewer, flatter event constructors
-- **A `Result`** in place of `Invalid` where the error is not part of the machine
-
-The design note is in `docs/DESIGN.md`. Pull requests are welcome.
-
----
 layout: end
 ---
 
-# Thank you
+# Try it out
+
+Play Space Invaders in the browser:
+`samuelbucheliz.github.io/elmulator`
+
+Read the code, starting with the types:
+
+- `src/elm/Registers.elm`: registers and pairs as types
+- `src/elm/Cabinet.elm`: buttons and keys as values
+- `src/elm/Cpu.elm`: the core loop and `runCycles`
+
+Run the tests: `npm test` (about a second) and `npm run test:slow` (the CP/M ROMs)
 
 Repository: `github.com/SamuelBucheliZ/elmulator`
-
-Upstream: `github.com/lakermann/elmulator`
-
-Live: `samuelbucheliz.github.io/elmulator`
