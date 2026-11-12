@@ -1,6 +1,6 @@
-# Elm-ulator
+# Elm-ulator [![CI](https://github.com/SamuelBucheliZ/elmulator/actions/workflows/ci.yml/badge.svg)](https://github.com/SamuelBucheliZ/elmulator/actions/workflows/ci.yml)
 
-_by [Samuel Bucheli](https://github.com/SamuelBucheliZ), [Stefan Friedli](https://github.com/sfriedli) and [Lukas Akermann](https://github.com/lakermann)_
+_by [Samuel Bucheli](https://github.com/SamuelBucheliZ), [Stefan Friedli](https://github.com/sfriedli) and [Lukas Akermann](https://github.com/lakermann), October 2019_
 
 An Intel 8080 emulator written in Elm 0.19.1.
 
