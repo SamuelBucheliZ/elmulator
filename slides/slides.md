@@ -84,13 +84,17 @@ What an emulator has to reproduce
 
 # An emulator runs another machine's program
 
-<div class="grid grid-cols-2 gap-8 items-center">
+<div class="grid grid-cols-2 gap-8">
 
 <div>
 
 - **Host**: the machine running the emulator (here: a browser)
 - **Guest**: the machine being emulated (here: an Intel 8080 and its Space Invaders cabinet)
 - The guest's program is just data for the emulator: it reads the bytes, one instruction at a time
+
+</div>
+
+<div>
 
 Two families of technique:
 
@@ -101,22 +105,16 @@ Interpretation is slower, but simple to get exactly right.
 
 </div>
 
-<div class="diagram">
+</div>
+
+<div class="diagram diagram-row">
 
 ```mermaid
 %%{init: {'themeVariables': {'fontSize': '20px'}}}%%
-flowchart TB
-    subgraph host[Host: the browser]
-        E[Elmulator<br/>reads one byte, does what it says]
-    end
-    subgraph guest[Guest: an Intel 8080]
-        P[Game program in memory<br/>bytes: 3E 07 80 ...]
-    end
-    P -->|bytes, one at a time| E
+flowchart LR
+    P[Game program in memory<br/>bytes: 3E 07 80 ...] -->|bytes, one at a time| E[Elmulator<br/>reads one byte, does what it says]
     E -->|changes registers, memory, screen| S[(emulated state)]
 ```
-
-</div>
 
 </div>
 
@@ -1220,7 +1218,7 @@ runCycles targetCycles nextInterruptDue machineState =
 
 # Walk-through 4: from video memory to pixels
 
-<div class="diagram diagram-row">
+<div class="diagram diagram-row diagram-row-small">
 
 ```mermaid
 %%{init: {'themeVariables': {'fontSize': '16px'}}}%%
@@ -1239,15 +1237,11 @@ flowchart LR
 ```elm
 -- src/elm/Main.elm: RenderScreen (excerpt)
 RenderScreen _ ->
-    case model.machine.currentCpuState of
-        Valid machineState ->
-            let
-                frame = readMemorySlice 0x2400 0x3FFF machineState.memory
-            in
-            if model.ui.lastFrame == Just frame then
-                ( model, Cmd.none )             -- nothing changed: no redraw
-            else
-                ...  -- store renderFrame frame as the new screen
+    -- frame = readMemorySlice 0x2400 0x3FFF memory
+    if model.ui.lastFrame == Just frame then
+        ( model, Cmd.none )     -- unchanged: no redraw
+    else
+        ...                     -- keep renderFrame frame
 ```
 
 </div>
@@ -1317,13 +1311,13 @@ Right ->
 </div>
 
 ---
-layout: end
+layout: center
 ---
 
 # Try it out
 
 Play Space Invaders in the browser:
-`samuelbucheliz.github.io/elmulator`
+[samuelbucheliz.github.io/elmulator](https://samuelbucheliz.github.io/elmulator)
 
 Read the code, starting with the types:
 
@@ -1333,4 +1327,4 @@ Read the code, starting with the types:
 
 Run the tests: `npm test` (about a second) and `npm run test:slow` (the CP/M ROMs)
 
-Repository: `github.com/SamuelBucheliZ/elmulator`
+Repository: [github.com/SamuelBucheliZ/elmulator](https://github.com/SamuelBucheliZ/elmulator)

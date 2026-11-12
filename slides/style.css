@@ -54,6 +54,9 @@ pre.shiki span {
 .diagram-row svg {
   max-height: 24vh !important;
 }
+.diagram-row-small svg {
+  max-height: 17vh !important;
+}
 /* The Elm Architecture picture is the one diagram that should use the whole slide. */
 .diagram-xl svg {
   max-height: 70vh !important;
