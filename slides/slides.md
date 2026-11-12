@@ -33,7 +33,7 @@ in a functional language, and finish with the code of this project.
 1. **Words we will use**: a short glossary
 2. **Emulation**: what it is, and what we must reproduce
 3. **The Intel 8080**: registers, instructions, ports, interrupts, the clock, the screen
-4. **Functional programming and modelling**: values, effects as data, and types that rule out wrong programs
+4. **Functional programming and modelling**: values, effects as data, and types that rule out wrong programs; an optional deep dive into idioms
 5. **Elm**: the language and its architecture
 6. **Walk-through**: from a ROM file to pixels on the screen, with the code for each step
 
@@ -44,6 +44,42 @@ in a functional language, and finish with the code of this project.
 Every part refers back to Elmulator, so you can see each idea in working code.
 
 The repository: `github.com/SamuelBucheliZ/elmulator`
+
+</div>
+
+</div>
+
+---
+
+# What is Elmulator?
+
+<div class="flex justify-center">
+<img src="/images/elmulator-screenshot.png" alt="Screenshot of Elmulator running Space Invaders, with the screen, CPU registers, ports and stack" style="max-height: 330px; width: auto;" />
+</div>
+
+<div class="text-center pt-2 text-sm">
+
+A piece of software, written in the programming language **Elm**, that plays the 1978 arcade game **Space Invaders**. It is an Intel 8080 emulator: it runs the original game program, one instruction at a time.
+
+</div>
+
+---
+
+# Why we built it
+
+<div class="grid grid-cols-2 gap-8 pt-6">
+
+<div>
+
+- **To learn and apply functional programming** concepts in a real project, not only in exercises
+- **An unusual challenge:** can an emulator be written in Elm at all?
+
+</div>
+
+<div>
+
+- **To learn Elm as a side effect**, while doing the first thing
+- **To have fun**
 
 </div>
 
@@ -881,9 +917,69 @@ Our tests and the ROM tests catch most such slips, but the types could do more.
 layout: section
 ---
 
-# 3c · Functional idioms in the code
+# Deep dive: functional idioms in the code
 
-Maybe, decoders, tasks, folds and partial application
+Optional, for the curious: how the code uses `Maybe`, monads, decoders, folds, currying and partial application. The walk-through does not depend on it.
+
+---
+
+# A monad is just a monoid in the category of endofunctors
+
+<div class="text-2xl pt-8 text-center">What's the problem?</div>
+
+<div class="flex justify-center pt-4">
+<img src="/images/burritos-monads.jpg" alt="Comic: 'Functional programming in a nutshell'. A monad in X is just a monoid in the category of endofunctors; no one knows what that means, that phrase usually gets you through though." style="max-height: 250px; width: auto;" />
+</div>
+
+<div class="credit" style="position: absolute; left: 2.5rem; right: 2.5rem; bottom: 1.2rem;">
+
+Comic "Burritos" by sebiwi (2018), licence CC BY-NC 4.0: <https://sebiwi.github.io/comics/burritos/>
+
+Book: Bartosz Milewski, *Category Theory for Programmers*, [read the preface on his blog](https://bartoszmilewski.com/2014/10/28/category-theory-for-programmers-the-preface/). Video course: [his YouTube playlist](https://www.youtube.com/playlist?list=PLbgaMIhjbmEnaH_LTkxLI7FMa2HsnawM). For the real thing, start there.
+
+</div>
+
+---
+
+# Monads: two operations
+
+<div class="diagram diagram-row">
+
+```mermaid
+%%{init: {'themeVariables': {'fontSize': '20px'}}}%%
+flowchart LR
+    A["a<br/>a plain value"] -->|"pure<br/>(Just, succeed)"| M1["M a<br/>the value in a context"]
+    M1 -->|"andThen step<br/>step: a -> M b"| M2["M b<br/>the next context"]
+```
+
+</div>
+
+<div class="text-sm opacity-80 pt-2">
+
+- **`pure`** (also called `return`) puts a plain value into the context. In Elm: `Just`, `Decode.succeed`, `Task.succeed`.
+- **`andThen`** (also called `bind`, `>>=`) takes a value in its context and a step that returns a new context. The step runs only when there is a value; otherwise the context passes straight through.
+
+Those two operations are enough to chain steps that may be missing, fail or still be waiting.
+
+</div>
+
+---
+
+# Monads: our three examples
+
+| | `Maybe` | `Decoder` | `Task` |
+| --- | --- | --- | --- |
+| The context | the value may be missing | the parse may fail | the effect has not run yet |
+| `pure` | `Just x` | `Decode.succeed x` | `Task.succeed x` |
+| `andThen` | `Maybe.andThen` | `Decode.andThen` | `Task.andThen` |
+| `andThen` runs the step when | there is a value | the parse succeeded | the previous task finished |
+| Where we use it | `Cabinet.gameKey`; `andThen` in `InstructionDisassembler` | `andThen` in `UI/KeyDecoder`; `succeed` and `map` in `FileDecoder` | `Task.perform` in `Main`, to read the chosen ROM file |
+
+<div class="text-sm opacity-80 pt-2">
+
+We never chain two tasks with `andThen`; the task is run once by `Task.perform`. `Cmd` is not a monad: a command is a description the runtime runs, and you cannot chain on it.
+
+</div>
 
 ---
 
@@ -915,30 +1011,24 @@ disassembleOneInstruction state =
         |> Maybe.map (\opCode -> applyOpCodeToDisassemblyState opCode state)
 ```
 
-<div class="text-sm opacity-80 pt-2">
+<div class="diagram diagram-row-small pt-2">
 
-- No bytes left: <code>List.head</code> gives <code>Nothing</code>, and the chain stops
-- An unknown opcode: <code>getOpCodeFromTable</code> gives <code>Nothing</code>, and the chain stops
-- Only when both succeed does the last step run
-
-<code>andThen</code> is the step that makes a chain of possibly failing steps read like straight-line code.
+```mermaid
+%%{init: {'themeVariables': {'fontSize': '20px'}}}%%
+flowchart LR
+    B["List.head<br/>next byte"] -->|"Just byte"| O["getOpCodeFromTable"]
+    B -->|"Nothing: no bytes left"| N(["Nothing"])
+    O -->|"Just opCode"| R["apply it"]
+    O -->|"Nothing: unknown opcode"| N
+    R --> J(["Just result"])
+```
 
 </div>
 
----
+<div class="text-sm opacity-80">
 
-# Monads, in one slide
+The first <code>Nothing</code> ends the chain, and the last step runs only when every step before it succeeded. That is what makes a chain of possibly failing steps read like straight-line code.
 
-A **monad** is a type with two operations: put a plain value into it (`succeed`, `Just`), and chain a step that itself returns that type (`andThen`). The value carries a context: it may be missing, it may fail, it may still be waiting for something.
-
-| Type | The context | Where Elmulator uses it |
-| --- | --- | --- |
-| `Maybe` | the value may be missing | the key map, the opcode lookup |
-| `Decoder` | the parse may fail | keyboard events, the ROM file |
-| `Task` | an effect that will produce a value | reading the selected ROM file |
-
-<div class="text-sm opacity-80 pt-2">
-Elm has no <code>do</code> notation, so a chain is written with <code>|></code> and <code>andThen</code>. <code>Cmd</code> is not one of these: you cannot chain on a command, because it is a description the runtime runs once.
 </div>
 
 ---
@@ -1026,13 +1116,60 @@ rowRuns videoRam row =
         |> closeRunAt row (pixelsPerRow - 1)
 ```
 
-<div class="text-sm opacity-80 pt-2">
-The scan state is a record. Each byte of a row updates it, and the fold returns the final state. The runs are built in one pass, so the cost grows with the size of the screen, not with its square.
+<div class="diagram diagram-row-small pt-2">
+
+```mermaid
+%%{init: {'themeVariables': {'fontSize': '20px'}}}%%
+stateDiagram-v2
+    direction LR
+    [*] --> Dark
+    Dark --> Lit: lit pixel, open a run
+    Lit --> Lit: lit pixel, run goes on
+    Lit --> Dark: dark pixel, close the run
+```
+
+</div>
+
+<div class="text-sm opacity-80">
+The scan state is a record: the start of the open run and the finished runs. Each byte updates it, and the fold returns the final state. The runs are built in one pass over the row.
 </div>
 
 ---
 
-# Partial application: functions with some arguments already given
+# Currying: every function takes one argument
+
+```elm
+add : Int -> Int -> Int
+add x y =
+    x + y
+
+addFive : Int -> Int
+addFive =
+    add 5
+```
+
+<div class="diagram diagram-row-small pt-2">
+
+```mermaid
+%%{init: {'themeVariables': {'fontSize': '20px'}}}%%
+flowchart LR
+    F["add : Int -> (Int -> Int)<br/>takes one argument"] -->|"give 5"| G["addFive : Int -> Int<br/>still waiting for y"]
+    G -->|"give 3"| R(["8"])
+```
+
+</div>
+
+<div class="text-sm opacity-80">
+
+- In Elm every function takes exactly one argument. <code>add 5 3</code> is really <code>(add 5) 3</code>.
+- Currying is that design: a function of two arguments is a function that returns a function of one.
+- Tuples and records do not curry: a function that takes <code>( x, y )</code> must be given both at once.
+
+</div>
+
+---
+
+# Partial application: the opcode table
 
 ```elm
 -- src/elm/OpCodeTable.elm
@@ -1046,7 +1183,7 @@ aluRegister : Int -> Operand -> MachineState -> MachineStateDiff
 
 <div class="text-sm opacity-80 pt-2">
 
-<code>aluRegister row operand</code> is a function that still waits for the machine state. The table stores these partly applied functions, and the CPU supplies the state when it runs an instruction. The same shape appears in <code>ImplTwoBytes = ByteValue -> (MachineState -> MachineStateDiff)</code>.
+<code>aluRegister row operand</code> is partial application: a function that still waits for the machine state. The table stores these partly applied functions, and the CPU supplies the state when it runs an instruction. The same shape appears in <code>ImplTwoBytes = ByteValue -> (MachineState -> MachineStateDiff)</code>.
 
 </div>
 
@@ -1093,17 +1230,54 @@ type MemoryAccessResult
 
 Elm's standard <code>Result error value</code> has the same two cases (<code>Ok</code> and <code>Err</code>), and the same helpers: <code>Result.map</code>, <code>Result.andThen</code>, <code>Result.withDefault</code>.
 
-We wrote our own type first. The standard one would give us those helpers for free, so the unwrapping code in <code>OpCode.elm</code> could be chained rather than matched by hand. We keep the names <code>Valid</code> and <code>Invalid</code> because the emulator's own state type uses them too.
+**Why we wrote our own.** The type dates from 2019, before this rebuild, in the original project's commit "Adding memory access checks". The names were the reason: <code>Valid</code> and <code>Invalid</code> say what happened to a memory access in the emulated machine, and <code>EmulatorState</code> uses the same two names for the same idea, a step that worked or did not, so the core speaks one vocabulary.
+
+**What it costs.** We write <code>map</code> and <code>andThen</code> by hand where we need them, and a reader has to learn a second result type.
+
+**What we would do today.** Probably switch to the standard <code>Result String ByteValue</code>: the two cases map exactly onto <code>Ok</code> and <code>Err</code>, and the helpers are worth more than the names.
 
 </div>
+
+---
+
+# For the curious: To Mock a Mockingbird
+
+<div class="flex gap-6 items-center">
+<img src="/images/mockingbird-constellation.jpg" alt="The Mockingbird constellation, a 1807 proposal by Thomas Young" style="max-height: 100px; width: auto; flex-shrink: 0;" />
+<div>
+
+Raymond Smullyan's puzzle book names combinators after birds. A combinator is a function that uses only its arguments, with no free variables.
+
+</div>
+</div>
+
+<div class="credit">
+
+Image: "Mockingbird Constellation" by Ultima Thulean, CC BY-SA 4.0, [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Mockingbird_Constellation.jpg).
+
+Book: Raymond M. Smullyan, *To Mock a Mockingbird* (1985), a book of bird puzzles that leads, step by step, to logic and arithmetic. Entertaining, and a gentle route into combinators.
+
+</div>
+
+<div class="glossary">
+
+| Bird | What it does | In Elm |
+| --- | --- | --- |
+| **<span style="color:#6b7280">Mockingbird</span>** `M` | `M x = x x`: applies a function to itself | not in core |
+| **<span style="color:#1e63d6">Bluebird</span>** `B` | `B x y z = x (y z)`: composes two functions | `(<<)` |
+| **<span style="color:#c62828">Cardinal</span>** `C` | `C x y z = x z y`: swaps the arguments | `flip` |
+| **<span style="color:#b45309">Kestrel</span>** `K` | `K x y = x`: ignores its second argument | `always` |
+| **<span style="color:#6d28d9">Starling</span>** `S` | `S x y z = x z (y z)`: with `K`, enough to build every other combinator | not in core |
+
+</div>
+
+
 
 ---
 layout: section
 ---
 
 # 4 · Elm
-
-A typed, pure language for web front ends
 
 A typed, pure language for web front ends
 
@@ -1546,7 +1720,16 @@ Right ->
 
 ---
 
-# Lessons learned: the bugs we hit
+# Lessons learned: why the model paid off
+
+- **The model came first.** Registers, operands, register pairs, opcode lengths and effects are types. Much of what the 8080 means is in the types, not in comments.
+- **The core stayed pure.** The same functions run the 8080 test ROMs in a plain test run and drive the playable emulator; the browser only supplies events and draws the screen.
+- **Changes stayed where they belonged.** The refactors (generated instruction families, typed registers, the model split, the cabinet profile) each touched a few modules, because the core does no input or output.
+- **It was a fun exercise, not the obvious choice.** You would usually write an emulator in C, Rust or another low-level language, where bit operations and speed come easily. Elm gave us guarantees (no runtime exceptions, effects written out in the types) and cost us speed and some clumsy bit code.
+
+---
+
+# Bugs we hit, and what caught them
 
 <div class="dense">
 
@@ -1567,13 +1750,14 @@ Right ->
 
 # Take-aways for engineers
 
-1. **Find an oracle before you write code.** The 8080 test ROMs say what each result should be, and they caught the flag bugs that our own reading had let through.
-2. **Keep the core pure.** Most tests run without a browser, in about a second.
-3. **Make illegal states unrepresentable, and know where the types are weak.** Aliases and custom result types give less than the standard ones.
-4. **Pass time and input in as values.** Then timing is testable, and deterministic.
-5. **Refactor under a safety net.** The slow suite caught what the fast tests did not.
-6. **Use the standard types first:** `Maybe`, `Result`, decoders, tasks. Write your own only when they do not fit.
-7. **The original hardware is the specification.** Read the reference, and trace what the game really does.
+1. **Model the domain first.** Make the types say what the machine means: registers, operands, pairs, opcode lengths.
+2. **Make wrong programs hard to write.** A closed union rules out cases; a register pair cannot be passed where a register is expected.
+3. **Keep effects at the edge.** Describe an effect as a value and let the runtime run it, so the core stays pure and testable without a browser.
+4. **Pass time and input in as values.** Then timing is testable, and the same input gives the same output.
+5. **Find an oracle before you write code.** The 8080 test ROMs say what each result should be; they caught bugs that careful reading had let through.
+6. **Use the standard types and idioms first:** `Maybe`, `Result`, decoders, tasks. Write your own only when they do not fit, and say why.
+7. **Keep the core good; the edges can be messy.** The UI and the tooling changed quickly. The model did not need to.
+
 
 ---
 layout: center
@@ -1591,5 +1775,7 @@ Read the code, starting with the types:
 - `src/elm/Cpu.elm`: the core loop and `runCycles`
 
 Run the tests: `npm test` (about a second) and `npm run test:slow` (the CP/M ROMs)
+
+This deck as a PDF: [elmulator-slides.pdf](https://samuelbucheliz.github.io/elmulator/slides/elmulator-slides.pdf)
 
 Repository: [github.com/SamuelBucheliZ/elmulator](https://github.com/SamuelBucheliZ/elmulator)
