@@ -1,6 +1,7 @@
 module LogicFlags exposing (..)
 
 import Bitwise
+import ConditionCodesFlags
 import EmulatorState exposing (ByteValue, Flag, MachineStateDiffEvent(..), SetCpuStateEvent(..), SetFlagEvent(..))
 
 
@@ -29,11 +30,18 @@ setFlagAC newValue =
     SetCpu (SetFlag (SetFlagAC newValue))
 
 
+{-| Zero, sign and parity flags of an 8 bit result. The value is masked to
+8 bits first, so an unwrapped intermediate result (e.g. 0x100) yields Z=True.
+-}
 flags_ZSP : ByteValue -> List MachineStateDiffEvent
 flags_ZSP value =
-    [ setFlagZ (value == 0)
-    , setFlagS (Bitwise.and 128 value == 128)
-    , setFlagP (modBy 2 value == 0)
+    let
+        byteValue =
+            Bitwise.and 0xFF value
+    in
+    [ setFlagZ (byteValue == 0)
+    , setFlagS (Bitwise.and 128 byteValue == 128)
+    , setFlagP (ConditionCodesFlags.pFlag byteValue)
     ]
 
 

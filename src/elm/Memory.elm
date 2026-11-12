@@ -5,30 +5,34 @@ import EmulatorState exposing (AddressValue, ByteValue, Memory)
 import Hex
 
 
-type MemoryAccessResult =
-        Valid ByteValue
-        | Invalid String
+type MemoryAccessResult
+    = Valid ByteValue
+    | Invalid String
+
 
 readMemory : AddressValue -> Memory -> MemoryAccessResult
 readMemory address memory =
     let
         readValue =
-            Array.get address memory
+            Array.get (modBy 0x00010000 address) memory
     in
     case readValue of
         Just value ->
             Valid value
 
         Nothing ->
-            Invalid ("Illegal memory access occurred at " ++ (Hex.padX4 address))
+            Invalid ("Illegal memory access occurred at " ++ Hex.padX4 address)
 
-type alias MemoryProvider = () -> MemoryAccessResult
+
+type alias MemoryProvider =
+    () -> MemoryAccessResult
+
 
 createMemoryProvider : AddressValue -> Int -> Memory -> MemoryProvider
 createMemoryProvider address offset memory =
     let
         readValue =
-            Array.get (address + offset) memory
+            Array.get (modBy 0x00010000 (address + offset)) memory
     in
     \_ ->
         case readValue of
@@ -36,7 +40,7 @@ createMemoryProvider address offset memory =
                 Valid value
 
             Nothing ->
-                Invalid ("Illegal memory access occurred at " ++ (Hex.padX4 address))
+                Invalid ("Illegal memory access occurred at " ++ Hex.padX4 address)
 
 
 readMemorySlice : AddressValue -> AddressValue -> Memory -> Array ByteValue

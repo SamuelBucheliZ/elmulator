@@ -54,7 +54,7 @@ allZeroMachineState =
 
 allZeroCpuState : CpuState
 allZeroCpuState =
-    CpuState 0 0 0 0 0 0 0 0 0 (ConditionCodes False False False False False) False 0
+    { a = 0, b = 0, c = 0, d = 0, e = 0, h = 0, l = 0, sp = 0, pc = 0, conditionCodes = ConditionCodes False False False False False, intEnable = False, cycleCount = 0 }
 
 
 getValueOfRegisterB : EmulatorState -> Maybe Int

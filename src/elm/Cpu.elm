@@ -2,10 +2,10 @@ module Cpu exposing (..)
 
 import Array exposing (Array)
 import Bitwise
-import Config exposing (interrupt_every)
-import CpuValidator exposing (validate)
+import Cabinet
+import Config exposing (interruptPeriodCycles)
 import EmulatorState exposing (AddressValue, ByteValue, ConditionCodes, CpuState, EmulatorState(..), Flag, MachineState, MachineStateDiff(..), MachineStateDiffEvent(..), Memory, Ports, RegisterValue, SetCpuStateEvent(..), SetFlagEvent(..), SetPortEvent(..), SetShiftRegisterEvent(..), ShiftRegister)
-import IO exposing (pressLeft, pressRight, pressSpace, relaseLeft, relaseRight, relaseSpace)
+import IO exposing (keyEvent)
 import MachineInstructions exposing (push_)
 import Memory exposing (createMemoryProvider)
 import OpCode exposing (OpCode, getCycles, getImplementation)
@@ -46,45 +46,54 @@ nStep n machineState =
         ns
 
 
-nStep_withInterrupt : Int -> MachineState -> EmulatorState
-nStep_withInterrupt n machineState =
-    let
-        ns =
-            oneStep machineState
-    in
-    if n > 1 then
-        case ns of
-            Valid cs ->
-                if modBy interrupt_every machineState.step == 0 then
-                    let
-                        newNs =
-                            checkForInterrupt cs
-                    in
-                    case newNs of
-                        Valid ncs ->
-                            nStep_withInterrupt (n - 1) ncs
+{-| Runs instructions until the cycle counter reaches `targetCycles`.
 
-                        Invalid _ _ ->
-                            newNs
+Every `interruptPeriodCycles` a video interrupt is raised: RST 1 and RST 2 alternately, as the
+Space Invaders hardware does. `nextInterruptDue` is the cycle count of the next one; it moves on
+by one period each time, whether or not the CPU accepts the interrupt. Returns the new state
+and the next due cycle.
 
-                else
-                    nStep_withInterrupt (n - 1) cs
-
-            Invalid _ _ ->
-                ns
+-}
+runCycles : Int -> Int -> MachineState -> ( EmulatorState, Int )
+runCycles targetCycles nextInterruptDue machineState =
+    if machineState.cpuState.cycleCount >= targetCycles then
+        ( Valid machineState, nextInterruptDue )
 
     else
-        ns
+        case oneStep machineState of
+            Invalid previous message ->
+                ( Invalid previous message, nextInterruptDue )
+
+            Valid next ->
+                if next.cpuState.cycleCount >= nextInterruptDue then
+                    let
+                        -- the first interrupt of a frame (the mid-frame one) is RST 1
+                        vector =
+                            if modBy 2 (nextInterruptDue // interruptPeriodCycles) == 1 then
+                                1
+
+                            else
+                                2
+                    in
+                    case checkForInterrupt vector next of
+                        Valid interrupted ->
+                            runCycles targetCycles (nextInterruptDue + interruptPeriodCycles) interrupted
+
+                        Invalid previous message ->
+                            ( Invalid previous message, nextInterruptDue + interruptPeriodCycles )
+
+                else
+                    runCycles targetCycles nextInterruptDue next
 
 
-checkForInterrupt : MachineState -> EmulatorState
-checkForInterrupt machineState =
+checkForInterrupt : Int -> MachineState -> EmulatorState
+checkForInterrupt vector machineState =
     let
         intEnabled =
             machineState.cpuState.intEnable
     in
     if intEnabled then
-        generateInterrupt machineState 2
+        generateInterrupt machineState vector
 
     else
         Valid machineState
@@ -110,11 +119,19 @@ generateInterruptEvents machineState number =
         newPc =
             8 * number
 
+        -- while halted (on a HLT) the return address is the instruction after it
+        returnPc =
+            if getCurrentOpCode machineState == 0x76 then
+                modBy 0x00010000 (machineState.cpuState.pc + 1)
+
+            else
+                machineState.cpuState.pc
+
         pcHigh =
-            Bitwise.shiftRightBy 8 (Bitwise.and machineState.cpuState.pc 0xFF00)
+            Bitwise.shiftRightBy 8 (Bitwise.and returnPc 0xFF00)
 
         pcLow =
-            Bitwise.and machineState.cpuState.pc 0xFF
+            Bitwise.and returnPc 0xFF
     in
     let
         pushEvents =
@@ -123,7 +140,11 @@ generateInterruptEvents machineState number =
     Events
         (List.concat
             [ pushEvents
-            , [ SetCpu (SetPC newPc) ]
+
+            -- Accepting an interrupt disables further interrupts until EI is executed
+            , [ SetCpu (SetIntEnable False)
+              , SetCpu (SetPC newPc)
+              ]
             ]
         )
 
@@ -205,49 +226,7 @@ apply machineStateDiff cpuState =
             Invalid maybePreviousState errorMessage
 
         Events machineStateDiffEvents ->
-            --if invalidEvent machineStateDiffEvents then
-            --    Invalid (Just cpuState) "Invalid event"
-            --
-            --else
-            --    validate (List.foldl applyEvent { cpuState | step = newStep } machineStateDiffEvents)
-            -- Enable above to search for an invalid event
-            validate (List.foldl applyEvent { cpuState | step = newStep } machineStateDiffEvents)
-
-
-invalidEvent : List MachineStateDiffEvent -> Bool
-invalidEvent events =
-    List.length (List.filterMap findMemoryEvent events) > 1
-
-
-findPCEvent : MachineStateDiffEvent -> Maybe Int
-findPCEvent event =
-    case event of
-        SetCpu (SetPC value) ->
-            if value > 0x1FFF then
-                Just value
-
-            else
-                Nothing
-
-        _ ->
-            Nothing
-
-
-findMemoryEvent : MachineStateDiffEvent -> Maybe Int
-findMemoryEvent event =
-    case event of
-        SetMemory address value ->
-            if address == 0x23E5 && value == 0x20 then
-                Just value
-
-            else if address == 0x23E4 && value == 0x68 then
-                Just value
-
-            else
-                Nothing
-
-        _ ->
-            Nothing
+            Valid (List.foldl applyEvent { cpuState | step = newStep } machineStateDiffEvents)
 
 
 applyEvent : MachineStateDiffEvent -> MachineState -> MachineState
@@ -278,11 +257,19 @@ applyEvent event machineState =
             { machineState | ports = newPorts }
 
 
+{-| The 8080 has a 16 bit address space. Stack and pointer arithmetic can step
+outside of it (e.g. PUSH with SP=0), so addresses wrap around like the hardware.
+-}
+wrapAddress : AddressValue -> AddressValue
+wrapAddress address =
+    modBy 0x00010000 address
+
+
 setMemory : AddressValue -> ByteValue -> MachineState -> MachineState
 setMemory address value cpuState =
     let
         updatedMemory =
-            Array.set address value cpuState.memory
+            Array.set (wrapAddress address) value cpuState.memory
     in
     { cpuState | memory = updatedMemory }
 
@@ -311,11 +298,12 @@ setCpuState event cpuState =
         SetRegisterL register ->
             { cpuState | l = register }
 
+        -- PC and SP are 16 bit registers: wrap instead of growing past 0xFFFF or below 0
         SetPC value ->
-            { cpuState | pc = value }
+            { cpuState | pc = modBy 0x00010000 value }
 
         SetSP value ->
-            { cpuState | sp = value }
+            { cpuState | sp = modBy 0x00010000 value }
 
         SetFlag setFlagEvent ->
             { cpuState | conditionCodes = setFlag setFlagEvent cpuState.conditionCodes }
@@ -366,7 +354,7 @@ setPorts event ports =
             { ports | one = data }
 
         SetTwo data ->
-            { ports | one = data }
+            { ports | two = data }
 
 
 init : List ByteValue -> EmulatorState
@@ -424,8 +412,9 @@ initMemory rom =
         lengthRom =
             List.length rom
 
+        -- the 8080 has a 16 bit address space, i.e. 0x10000 bytes of memory
         paddingAmount =
-            0xFFFF - lengthRom
+            0x00010000 - lengthRom
 
         padding =
             List.repeat paddingAmount 0
@@ -448,30 +437,14 @@ initShiftRegister =
 
 initPorts : Ports
 initPorts =
-    Ports 14 8
+    Cabinet.spaceInvaders.initialPorts
 
 
 keyPressed : GameKey -> MachineState -> EmulatorState
 keyPressed key machineState =
-    case key of
-        Left ->
-            apply (pressLeft machineState) machineState
-
-        Right ->
-            apply (pressRight machineState) machineState
-
-        Space ->
-            apply (pressSpace machineState) machineState
+    apply (keyEvent True key machineState) machineState
 
 
 keyReleased : GameKey -> MachineState -> EmulatorState
 keyReleased key machineState =
-    case key of
-        Left ->
-            apply (relaseLeft machineState) machineState
-
-        Right ->
-            apply (relaseRight machineState) machineState
-
-        Space ->
-            apply (relaseSpace machineState) machineState
+    apply (keyEvent False key machineState) machineState

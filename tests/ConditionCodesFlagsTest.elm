@@ -68,7 +68,19 @@ all =
                         pFlag =
                             ConditionCodesFlags.pFlag 14
                     in
-                    Expect.equal True pFlag
+                    Expect.equal False pFlag
+            , test "3 (two bits set is even parity)" <|
+                \() ->
+                    Expect.equal True (ConditionCodesFlags.pFlag 3)
+            , test "7 (three bits set is odd parity)" <|
+                \() ->
+                    Expect.equal False (ConditionCodesFlags.pFlag 7)
+            , test "255 (eight bits set is even parity)" <|
+                \() ->
+                    Expect.equal True (ConditionCodesFlags.pFlag 255)
+            , test "256 only looks at the low 8 bits" <|
+                \() ->
+                    Expect.equal True (ConditionCodesFlags.pFlag 256)
             ]
         , describe "cyFlagAdd"
             [ test "256" <|

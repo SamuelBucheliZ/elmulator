@@ -67,7 +67,7 @@ getImplementation opCode firstValueProvider secondValueProvider =
                 firstArg =
                     firstValueProvider ()
             in
-              unwrapMemoryAccessTwoBytes implTwoBytes firstArg
+            unwrapMemoryAccessTwoBytes implTwoBytes firstArg
 
         ThreeBytes implThreeBytes ->
             let
@@ -77,9 +77,10 @@ getImplementation opCode firstValueProvider secondValueProvider =
                 secondArg =
                     secondValueProvider ()
             in
-              unwrapMemoryAccessThreeBytes implThreeBytes firstArg secondArg
+            unwrapMemoryAccessThreeBytes implThreeBytes firstArg secondArg
 
-unwrapMemoryAccessTwoBytes: ImplTwoBytes -> MemoryAccessResult -> (MachineState -> MachineStateDiff)
+
+unwrapMemoryAccessTwoBytes : ImplTwoBytes -> MemoryAccessResult -> (MachineState -> MachineStateDiff)
 unwrapMemoryAccessTwoBytes implTwoBytes firstAccessResult =
     case firstAccessResult of
         Valid byteValue ->
@@ -88,15 +89,19 @@ unwrapMemoryAccessTwoBytes implTwoBytes firstAccessResult =
         Invalid message ->
             illegalMemoryAccess message
 
-unwrapMemoryAccessThreeBytes: ImplThreeBytes -> MemoryAccessResult -> MemoryAccessResult -> (MachineState -> MachineStateDiff)
+
+unwrapMemoryAccessThreeBytes : ImplThreeBytes -> MemoryAccessResult -> MemoryAccessResult -> (MachineState -> MachineStateDiff)
 unwrapMemoryAccessThreeBytes implThreeBytes firstAccessResult secondAccessResult =
-    case (firstAccessResult, secondAccessResult) of
-        (Valid firstByteValue, Valid secondByteValue) ->
+    case ( firstAccessResult, secondAccessResult ) of
+        ( Valid firstByteValue, Valid secondByteValue ) ->
             implThreeBytes firstByteValue secondByteValue
-        (Valid _, Invalid message) ->
+
+        ( Valid _, Invalid message ) ->
             illegalMemoryAccess message
-        (Invalid message, _) ->
+
+        ( Invalid message, _ ) ->
             illegalMemoryAccess message
+
 
 illegalMemoryAccess : String -> (MachineState -> MachineStateDiff)
 illegalMemoryAccess message previousState =

@@ -95,13 +95,11 @@ all =
                         |> Hex.toString
                         |> Expect.equal "ff"
             ]
-            , describe "toPaddedString"
+        , describe "toPaddedString"
             [ test "for 254" <|
                 \() ->
                     254
-                    |> (Hex.toPaddedString 5)
-                    |> Expect.equal "000fe"
-
-
+                        |> Hex.toPaddedString 5
+                        |> Expect.equal "000fe"
             ]
         ]

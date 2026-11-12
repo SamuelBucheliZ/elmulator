@@ -78,7 +78,7 @@ all =
         , describe "readPSW"
             [ test "Flag []" <|
                 \() ->
-                    let                        
+                    let
                         expectedMachineStateDiffEvents =
                             [ SetCpu (SetFlag (SetFlagZ False))
                             , SetCpu (SetFlag (SetFlagS False))
@@ -90,7 +90,7 @@ all =
                     Expect.equal expectedMachineStateDiffEvents (Psw.readPSW 2)
             , test "Flag [Z]" <|
                 \() ->
-                    let                        
+                    let
                         expectedMachineStateDiffEvents =
                             [ SetCpu (SetFlag (SetFlagZ True))
                             , SetCpu (SetFlag (SetFlagS False))
@@ -102,7 +102,7 @@ all =
                     Expect.equal expectedMachineStateDiffEvents (Psw.readPSW 66)
             , test "Flag [S]" <|
                 \() ->
-                    let                        
+                    let
                         expectedMachineStateDiffEvents =
                             [ SetCpu (SetFlag (SetFlagZ False))
                             , SetCpu (SetFlag (SetFlagS True))
@@ -114,7 +114,7 @@ all =
                     Expect.equal expectedMachineStateDiffEvents (Psw.readPSW 130)
             , test "Flag [P]" <|
                 \() ->
-                    let                        
+                    let
                         expectedMachineStateDiffEvents =
                             [ SetCpu (SetFlag (SetFlagZ False))
                             , SetCpu (SetFlag (SetFlagS False))
@@ -126,7 +126,7 @@ all =
                     Expect.equal expectedMachineStateDiffEvents (Psw.readPSW 6)
             , test "Flag [CY]" <|
                 \() ->
-                    let                        
+                    let
                         expectedMachineStateDiffEvents =
                             [ SetCpu (SetFlag (SetFlagZ False))
                             , SetCpu (SetFlag (SetFlagS False))
@@ -138,7 +138,7 @@ all =
                     Expect.equal expectedMachineStateDiffEvents (Psw.readPSW 3)
             , test "Flag [AC]" <|
                 \() ->
-                    let                        
+                    let
                         expectedMachineStateDiffEvents =
                             [ SetCpu (SetFlag (SetFlagZ False))
                             , SetCpu (SetFlag (SetFlagS False))

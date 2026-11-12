@@ -1,4 +1,16 @@
-.code-wrapper {
-  height: 650px;
-  overflow-y: scroll;
+
+/* the emulated screen: drawn at 224 x 256 pixels, shown at two times its size */
+.screen {
+  display: block;
+  width: 100%;
+}
+
+.screen canvas {
+  /* the elm-canvas script sets an inline size, so these need !important */
+  width: 100% !important;
+  max-width: 480px;
+  height: auto !important;
+  image-rendering: pixelated;
+  border: 1px solid #333;
+  background: #000;
 }

@@ -10,19 +10,24 @@ type Msg
     | RomSelected File
     | RomLoaded Bytes
     | NextStepsRequested Int
-    | Emulation Time.Posix
     | EmulationWithInterrupt Time.Posix
     | KeyDown GameKey
     | KeyUp GameKey
     | Reset
-    | TickInterrupt Time.Posix
     | RenderScreen Time.Posix
     | InterruptRequested
     | StepsUpdated String
     | StepsSubmitted
+    | SpeedSelected Float
+    | TogglePause
+    | ToggleCode
+    | StartPausedChanged Bool
 
 
 type GameKey
     = Left
     | Right
-    | Space
+    | Fire
+    | Coin
+    | Start1
+    | Start2
