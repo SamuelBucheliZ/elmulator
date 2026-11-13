@@ -65,22 +65,38 @@ A piece of software, written in the programming language **Elm**, that plays the
 
 ---
 
-# Why we built it
+# Why we built it, and why Elm
 
-<div class="grid grid-cols-2 gap-8 pt-6">
+<div class="flex gap-6 pt-3 items-start">
+
+<div class="grid grid-cols-2 gap-6 text-sm" style="flex: 1;">
 
 <div>
 
+**Why build it**
+
 - **To learn and apply functional programming** concepts in a real project, not only in exercises
 - **An unusual challenge:** can an emulator be written in Elm at all?
+- **To learn Elm as a side effect**, while doing the first thing
+- **To have fun**
 
 </div>
 
 <div>
 
-- **To learn Elm as a side effect**, while doing the first thing
-- **To have fun**
+**Why Elm**
 
+- **Quite opinionated and strongly functional:** no exceptions, no null, no side effects in functions. Those limits are what make it a fun challenge.
+- **The Elm Architecture suits a browser emulator:** key presses and timers arrive as messages, `update` advances the machine, and `view` draws the screen. (Details later.)
+- **Learn a new language every year:** *The Pragmatic Programmer* suggests it, because each language solves the same problems in its own way.
+
+</div>
+
+</div>
+
+<div class="text-center" style="flex-shrink: 0;">
+<img src="/images/space-invaders-cabinet.jpg" alt="A Space Invaders cocktail table cabinet" style="max-height: 300px; width: auto;" />
+<div class="credit">Photo: Tomomarusan, Wikimedia Commons, CC BY 2.5</div>
 </div>
 
 </div>
@@ -485,6 +501,8 @@ Values, effects as data, and errors as values
 
 # A function is a value-in, value-out relation
 
+A **pure function** is one whose result depends only on its arguments, and which changes nothing else. `evaluate` is pure:
+
 ```elm
 evaluate : MachineState -> OpCode -> MachineStateDiff
 ```
@@ -500,7 +518,11 @@ by building a state and checking the result. 167 unit tests run in about a secon
 
 # Immutable records and updates
 
-Elm records are values. Updating a field makes a new record:
+Elm records are values. Updating a field makes a new record, and the old one stays as it was:
+
+<div class="grid grid-cols-2 gap-6 pt-2 items-center">
+
+<div class="code-small">
 
 ```elm
 withCpuState : EmulatorState -> Model -> Model
@@ -512,8 +534,26 @@ withCpuState cpuState model =
     { model | machine = { machine | currentCpuState = cpuState } }
 ```
 
-The old model still exists, unchanged. That is the foundation for **stepping**:
-a history of states is just a list of values, and going back is taking an earlier element.
+</div>
+
+<div class="reg-diagram">
+<div class="reg-row">
+<div class="reg-box"><b>state 1</b><span>A = 0x20, PC = 0x19e3</span></div>
+</div>
+<div class="reg-arrow">one instruction: <code>{ model | ... }</code> makes a new record</div>
+<div class="reg-row">
+<div class="reg-box reg-main"><b>state 2</b><span>A = 0x21, PC = 0x19e4</span></div>
+</div>
+<div class="reg-note">state 1 still exists, unchanged (example values)</div>
+</div>
+
+</div>
+
+<div class="text-sm opacity-80 pt-2">
+
+That is the foundation for **stepping**: a history of states is just a list of values, and going back is taking an earlier element.
+
+</div>
 
 ---
 
@@ -716,6 +756,40 @@ type OpCodeSpec
 
 <div class="text-sm opacity-70 pt-2">
 <code>getOpCodeLength</code> reads the length from the constructor, so it is written only once.
+</div>
+
+---
+
+# Side note: counting in types
+
+<div class="grid grid-cols-2 gap-6 pt-2">
+
+<div class="code-small">
+
+**TypeScript computes with number types**
+
+```ts
+type Operands<N extends 1 | 2 | 3> =
+  N extends 1 ? [number]
+  : N extends 2 ? [number, number]
+  : [number, number, number];
+
+function instr<N extends 1 | 2 | 3>(
+  length: N, operands: Operands<N>) { /* ... */ }
+
+instr(2, [0x3e]);  // error: length 2 needs two operands
+```
+
+</div>
+
+<div class="text-sm">
+
+- **TypeScript has number literal types**: `2` is a type, and a conditional type maps it to the shape of the operands. The check happens at compile time.
+- **Elm has no literal types and no type-level functions.** We use one constructor per length (`OneByte`, `TwoBytes`, `ThreeBytes`). The compiler checks the cases, not a count.
+- Elm also has no type classes, so `Maybe.andThen`, `Decode.andThen` and `Task.andThen` are three functions.
+
+</div>
+
 </div>
 
 ---
@@ -1033,6 +1107,71 @@ The first <code>Nothing</code> ends the chain, and the last step runs only when 
 
 ---
 
+# Why andThen takes a function that returns M b
+
+A context lets us put a value in and change the value inside it. `map` does that with a plain function `a -> b`. But what if the change can itself fail? Take a step that may fail:
+
+```elm
+String.toInt : String -> Maybe Int
+```
+
+```elm
+Just "12" |> Maybe.map String.toInt        --> Just (Just 12)   two layers
+Just "12" |> Maybe.andThen String.toInt    --> Just 12         one layer
+```
+
+<div class="grid grid-cols-2 gap-6 pt-3 text-sm items-start">
+
+<div>
+
+**`map` with `a -> b`**
+
+<div class="pt-2"><span class="nest-outer">Maybe<span class="nest-inner" style="display:block;margin-top:0.35rem;">Maybe 12</span></span></div>
+
+The failure has nowhere to go but inside the context again, so the layers pile up: `Just (Just 12)`.
+
+</div>
+
+<div>
+
+**`andThen` with `a -> M b`**
+
+<div class="pt-2"><span class="nest-outer">Maybe 12</span></div>
+
+The step decides the new context, and `andThen` keeps one layer: `Just 12`. It is `map` followed by removing the extra layer.
+
+</div>
+
+</div>
+
+---
+
+# Can map be made from andThen?
+
+Yes. `map` is `andThen` with a step that wraps its result:
+
+```elm
+map : (a -> b) -> Maybe a -> Maybe b
+map f m =
+    Maybe.andThen (\x -> Just (f x)) m
+```
+
+The other way round needs one more operation. `andThen f` is `map f` followed by **`join`**, which removes one layer:
+
+```elm
+join : Maybe (Maybe a) -> Maybe a
+join mm =
+    Maybe.andThen identity mm
+```
+
+<div class="text-sm opacity-80 pt-2">
+
+So `map` is the simpler operation, and `andThen` is `map` plus `join`. Elm has no type classes, so each type has its own `andThen`, which is the one the code uses.
+
+</div>
+
+---
+
 # Decoders: parsing that can fail, chained
 
 ```elm
@@ -1102,36 +1241,62 @@ Our core never does input or output itself. Every effect leaves the core as a va
 
 ---
 
-# Folds as state machines: video RAM to lines
+# Folds: the problem is one row of pixels
+
+The screen is 224 rows of 256 pixels, about 57,000 pixels. Drawing one rectangle per lit pixel was slow. Better: one rectangle per **run** of lit pixels, found in one pass over the video RAM.
+
+Each bit is one pixel. The least significant bit is the leftmost pixel of its byte. Here is one row, with two bytes (`0x3C` and `0x80`) and the rest dark:
+
+<div style="display:grid;grid-template-columns:repeat(16,1fr);width:560px;margin:0.6rem auto 0.2rem;">
+<div style="height:26px;border:1px solid #c9ced8;background:#ffffff"></div><div style="height:26px;border:1px solid #c9ced8;background:#ffffff"></div><div style="height:26px;border:1px solid #c9ced8;background:#1d2330"></div><div style="height:26px;border:1px solid #c9ced8;background:#1d2330"></div><div style="height:26px;border:1px solid #c9ced8;background:#1d2330"></div><div style="height:26px;border:1px solid #c9ced8;background:#1d2330"></div><div style="height:26px;border:1px solid #c9ced8;background:#ffffff"></div><div style="height:26px;border:1px solid #c9ced8;background:#ffffff"></div><div style="height:26px;border:1px solid #c9ced8;background:#ffffff"></div><div style="height:26px;border:1px solid #c9ced8;background:#ffffff"></div><div style="height:26px;border:1px solid #c9ced8;background:#ffffff"></div><div style="height:26px;border:1px solid #c9ced8;background:#ffffff"></div><div style="height:26px;border:1px solid #c9ced8;background:#ffffff"></div><div style="height:26px;border:1px solid #c9ced8;background:#ffffff"></div><div style="height:26px;border:1px solid #c9ced8;background:#ffffff"></div><div style="height:26px;border:1px solid #c9ced8;background:#1d2330"></div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(16,1fr);width:560px;margin:0.8rem auto 0.2rem;">
+<div style="grid-column:3 / span 4;height:22px;background:#1d2330;"></div>
+<div style="grid-column:16 / span 1;height:22px;background:#1d2330;"></div>
+</div>
+<div style="width:560px;margin:0 auto;font-size:0.7rem;text-align:center;">drawn as two rectangles, one per run, instead of five single pixels plus one</div>
+
+<div style="display:grid;grid-template-columns:repeat(16,1fr);width:560px;margin:0 auto;font-size:0.7rem;text-align:center;">
+<div style="grid-column:span 8;">byte 0: <code>0x3C</code></div>
+<div style="grid-column:span 8;">byte 1: <code>0x80</code></div>
+</div>
+
+<div class="text-sm opacity-80 pt-3">
+
+The lit pixels form **two runs**: pixels 2 to 5, and pixel 15. The fold finds them by visiting the bytes from left to right, with a small state that says whether a run is open.
+
+</div>
+
+---
+
+# Folds: one byte at a time
 
 ```elm
--- src/elm/Graphics.elm
+-- src/elm/Graphics.elm (simplified)
 type alias RowScan =
     { runStart : Int      -- first lit pixel of the open run, or -1
     , runs : List Run
     }
 
-rowRuns videoRam row =
-    List.foldl (scanByte videoRam row rowOffset) emptyScan (List.range 0 (bytesPerRow - 1))
-        |> closeRunAt row (pixelsPerRow - 1)
+List.foldl (scanByte videoRam row rowOffset) emptyScan (List.range 0 31)
 ```
 
-<div class="diagram diagram-row-small pt-2">
+<div class="text-sm pt-2">
 
-```mermaid
-%%{init: {'themeVariables': {'fontSize': '20px'}}}%%
-stateDiagram-v2
-    direction LR
-    [*] --> Dark
-    Dark --> Lit: lit pixel, open a run
-    Lit --> Lit: lit pixel, run goes on
-    Lit --> Dark: dark pixel, close the run
-```
+| Step | Input byte (pixels 0 to 7, or 8 to 15) | Open run | Finished runs (drawn) |
+| --- | --- | --- | --- |
+| start | nothing yet | none | <span style="display:inline-grid;grid-template-columns:repeat(16,12px);grid-template-rows:12px;height:12px;border:1px solid #1d2330;background:#ffffff;vertical-align:middle;"></span> |
+| byte 0 `0x3C` | <span class="px"><i></i><i></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span> | opened at 2, closed at 5 | <span style="display:inline-grid;grid-template-columns:repeat(16,12px);grid-template-rows:12px;height:12px;border:1px solid #1d2330;background:#ffffff;vertical-align:middle;"><span style="grid-column:3 / span 4;grid-row:1;background:#1d2330;"></span></span> |
+| byte 1 `0x80` | <span class="px"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i></span> | opened at 15 | <span style="display:inline-grid;grid-template-columns:repeat(16,12px);grid-template-rows:12px;height:12px;border:1px solid #1d2330;background:#ffffff;vertical-align:middle;"><span style="grid-column:3 / span 4;grid-row:1;background:#1d2330;"></span></span> |
+| end of row | nothing left | closed at 15 | <span style="display:inline-grid;grid-template-columns:repeat(16,12px);grid-template-rows:12px;height:12px;border:1px solid #1d2330;background:#ffffff;vertical-align:middle;"><span style="grid-column:3 / span 4;grid-row:1;background:#1d2330;"></span><span style="grid-column:16 / span 1;grid-row:1;background:#1d2330;"></span></span> |
 
 </div>
 
-<div class="text-sm opacity-80">
-The scan state is a record: the start of the open run and the finished runs. Each byte updates it, and the fold returns the final state. The runs are built in one pass over the row.
+<div class="text-sm opacity-80 pt-2">
+
+Each step takes the state and one byte, and returns a new state. A byte of zero closes the open run at once, which is the fast path in the code. The fold's final state is the list of runs for the row.
+
 </div>
 
 ---
@@ -1183,7 +1348,7 @@ aluRegister : Int -> Operand -> MachineState -> MachineStateDiff
 
 <div class="text-sm opacity-80 pt-2">
 
-<code>aluRegister row operand</code> is partial application: a function that still waits for the machine state. The table stores these partly applied functions, and the CPU supplies the state when it runs an instruction. The same shape appears in <code>ImplTwoBytes = ByteValue -> (MachineState -> MachineStateDiff)</code>.
+<code>aluRegister row operand</code> is partial application, and it is currying at work (see the slide on currying): the function takes three arguments, and two are given. The result still waits for the machine state. The table stores these partly applied functions, and the CPU supplies the state when it runs an instruction. The same shape appears in <code>ImplTwoBytes = ByteValue -> (MachineState -> MachineStateDiff)</code>.
 
 </div>
 
@@ -1703,6 +1868,52 @@ Right ->
 ```
 
 </div>
+
+</div>
+
+---
+
+# Summary: mutable machine, immutable model
+
+<div class="grid grid-cols-2 gap-6 pt-2 text-sm">
+
+<div>
+
+**The machine (von Neumann):** one memory holds code and data. An instruction can overwrite any byte, including code that is about to run.
+
+<div class="reg-diagram pt-2">
+<div class="reg-row"><span class="reg-box reg-main" style="min-width:2.9rem;padding:0.2rem 0.3rem;"><b style="font-size:0.9rem">3E</b></span><span class="reg-box reg-main" style="min-width:2.9rem;padding:0.2rem 0.3rem;"><b style="font-size:0.9rem">07</b></span><span class="reg-box reg-main" style="min-width:2.9rem;padding:0.2rem 0.3rem;"><b style="font-size:0.9rem">80</b></span><span class="reg-box reg-flags" style="min-width:2.9rem;padding:0.2rem 0.3rem;"><b style="font-size:0.9rem">41</b></span><span class="reg-box reg-flags" style="min-width:2.9rem;padding:0.2rem 0.3rem;"><b style="font-size:0.9rem">00</b></span><span class="reg-box reg-flags" style="min-width:2.9rem;padding:0.2rem 0.3rem;"><b style="font-size:0.9rem">0A</b></span></div>
+<div class="reg-note">orange: code the CPU runs; green: data, which a store can overwrite</div>
+</div>
+
+</div>
+
+<div>
+
+**The model (Elm):** a state is a value. An instruction returns a new state, and the old one is kept.
+
+<div class="reg-diagram pt-2">
+<div class="reg-row">
+<div class="reg-box"><b>state 0</b><span>A = 0x00</span></div>
+<div class="reg-arrow pt-4">MVI A,7</div>
+<div class="reg-box"><b>state 1</b><span>A = 0x07</span></div>
+<div class="reg-arrow pt-4">ADD B</div>
+<div class="reg-box"><b>state 2</b><span>A = 0x07 + B</span></div>
+</div>
+<div class="reg-note">each step shares almost everything with the one before</div>
+</div>
+
+</div>
+
+</div>
+
+<div class="text-sm pt-3">
+
+**The bridge**
+
+- **A write is an event.** A store becomes `SetMemory address value`, one of the events that `Cpu.apply` turns into the next state.
+- **Copying is cheap.** Memory is an Elm `Array`, which is persistent: `Array.set` copies only the path to the changed element, and the rest is shared with the old state.
+- **Code and data are one array.** The decoder reads the same bytes the CPU writes, so self-modifying code works in the model too.
 
 </div>
 
