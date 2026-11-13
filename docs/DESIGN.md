@@ -58,31 +58,45 @@ The 8080 runs at 2 MHz. The emulator counts cycles, not instructions:
   `tests-slow` holds the two long ones (CPUTEST, 8080 exerciser).
 - **Coverage**: a test checks that every documented opcode is implemented.
 
-## Planned: machine profiles
+## Machine profiles: started
 
-Space Invaders is the only game so far, and its specifics are spread over several modules:
-the video layout (`Graphics`), the interrupt schedule (`Config`), the button-to-port-bit map
-(`IO`) and the keyboard map (`UI.KeyDecoder`). They will be gathered in one value:
+Space Invaders is the only game so far. Its specifics were spread over several modules, and the
+first step has been taken: `Cabinet` (`src/elm/Cabinet.elm`) is a record with the name, the
+keyboard map and the initial port values, and `Space Invaders` is its one value. `UI.KeyDecoder`
+gets its keys from the cabinet through `Cabinet.gameKey`.
 
-```elm
-type alias Cabinet =
-    { name : String
-    , video : { start : Int, width : Int, height : Int, rotation : Rotation }
-    , interrupts : Int -> Int                 -- which vector is due in frame slice n
-    , buttons : Button -> List ( Port, Int )  -- port and bit driven by each button
-    , keys : String -> Maybe Button
-    }
-```
+Still outside the cabinet, to be moved in later:
 
-Space Invaders becomes one value of this type. Another 8080 cabinet would be another value.
-The CPU core does not change. The test ROMs use a plain profile without video or buttons.
+- the video layout (`Graphics`: start, width, height, rotation),
+- the interrupt schedule (`Config`, `Cpu`: which vector is due in each slice of the frame),
+- the button-to-port-bit map (`IO`).
 
-## Planned: smaller clean-ups
+The aim is a cabinet value with these fields as well, so that another 8080 machine would be another
+value. The CPU core should not change. The test ROMs use a plain profile without video or buttons.
 
-- One implementation per opcode family (the generated ones); no duplicate per-opcode functions.
-- `Register` and flag accessors instead of one function per register.
-- A flat effect type (`WriteRegister`, `WriteFlag`, `WriteMemory`, `AddCycles`).
-- `Result` for errors, instead of two error channels.
-- `Main.Model` split into `Machine` (emulator), `Clock` (timing) and `Ui` (controls, screen).
-- Views are functions of the model; the rendered screen is cached with `Html.Lazy`, not stored
-  in the model.
+## Clean-ups: done and open
+
+Done:
+
+- One implementation per opcode family: the families are generated from the opcode bits, not
+  written out per opcode.
+- Typed registers and register pairs (`Registers`), so that operands are not raw strings.
+- `Main`'s model is split into `Machine` (emulator), `Clock` (timing) and `Ui` (controls, screen).
+- Dead code is removed: the old event-search helpers and commented-out validators in `Cpu`.
+
+Done in a different shape than planned: effects are events in two levels (`SetCpu`, `SetMemory`,
+`SetFlag`, `AddCycles`, ...) inside `MachineStateDiffEvent`, rather than one flat type.
+
+Open:
+
+- `Result` for errors: memory access still uses its own `MemoryAccessResult`, and a failed step is
+  `Invalid` in `EmulatorState`. The standard `Result` would give `map` and `andThen` for free.
+- Views as functions of the model, with the rendered screen cached by `Html.Lazy`. The screen is
+  not cached yet.
+
+## Documentation
+
+- `docs/DESIGN.md`: this note.
+- `docs/opcodes.md`: the 8080 opcode reference.
+- `docs/slides/`: the slide deck for software engineers (Slidev), published with the Pages site under
+  `/elmulator/slides/`. It has its own `package.json`, so the Elm build does not depend on it.
