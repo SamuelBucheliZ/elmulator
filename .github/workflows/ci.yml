@@ -33,7 +33,7 @@ jobs:
         run: npm run build:prod
 
       - name: Build the slides
-        run: cd slides && npm ci && npm run build
+        run: cd docs/slides && npm ci && npm run build
 
       - name: Upload site
         uses: actions/upload-artifact@v4
@@ -66,13 +66,13 @@ jobs:
         run: |
           mkdir -p _site
           cp -r src/. _site/
-          cd slides
+          cd docs/slides
           npm ci
           npx playwright-chromium install --with-deps chromium
           npm run build -- --base /elmulator/slides/
           npm run pdf
-          cd ..
-          cp -r slides/dist _site/slides
+          cd ../..
+          cp -r docs/slides/dist _site/slides
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site/

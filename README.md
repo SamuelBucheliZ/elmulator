@@ -88,9 +88,9 @@ Space Invaders (`roms/invaders.rom`) is not in the repository because it is copy
 
 ## Documentation
 
-* [8080 By Opcode](./docu/opcodes.md)
+* [8080 By Opcode](./docs/opcodes.md)
 * [Design note](./docs/DESIGN.md)
-* Slides for software engineers: emulation, the 8080, functional programming and modelling, Elm and a walk-through of this code: <https://samuelbucheliz.github.io/elmulator/slides/> (source in [`slides/`](./slides); to present locally, `cd slides && npm install && npm run dev`; PDF: <https://samuelbucheliz.github.io/elmulator/slides/elmulator-slides.pdf>)
+* Slides for software engineers: emulation, the 8080, functional programming and modelling, Elm and a walk-through of this code: <https://samuelbucheliz.github.io/elmulator/slides/> (source in [`docs/slides/`](./docs/slides); to present locally, `cd docs/slides && npm install && npm run dev`; PDF: <https://samuelbucheliz.github.io/elmulator/slides/elmulator-slides.pdf>)
 
 ## Links
 
