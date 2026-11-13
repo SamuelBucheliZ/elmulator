@@ -161,3 +161,36 @@ pre.shiki span {
   background: #1d2330;
 }
 
+
+/* Nested boxes: a context inside a context (map on Maybe). */
+.nest-outer {
+  display: inline-block;
+  border: 2px solid #4b5bd6;
+  background: #eef0f5;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+}
+.nest-inner {
+  border: 2px dashed #c2410c;
+  background: #ffffff;
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+}
+/* Mini pixel strips inside tables and diagrams. */
+.px {
+  display: inline-flex;
+  border: 1px solid #1d2330;
+}
+.px i {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-right: 1px solid #c9ced8;
+  background: #ffffff;
+}
+.px i:last-child {
+  border-right: none;
+}
+.px i.on {
+  background: #1d2330;
+}
